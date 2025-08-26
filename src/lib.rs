@@ -1,6 +1,11 @@
 #![no_std]
+extern crate alloc;
 
 mod mono_8x13_bold;
+
+use alloc::vec::Vec;
+use core::ops;
+use embedded_graphics::mono_font::mapping::GlyphMapping;
 pub use mono_8x13_bold::MONO_8X13_BOLD;
 mod mono_5x7;
 pub use mono_5x7::MONO_5X7;
@@ -49,4 +54,25 @@ pub use mono_6x13::MONO_6X13;
 mod mono_8x13_italic;
 pub use mono_8x13_italic::MONO_8X13_ITALIC;
 mod mono_8x13;
+
+pub mod atlas;
+
 pub use mono_8x13::MONO_8X13;
+
+pub fn mono_6x10() -> impl FnOnce(&dyn GlyphMapping) -> embedded_graphics::mono_font::MonoFont {
+    use embedded_graphics::mono_font::*;
+    |mapping: &dyn GlyphMapping| -> MonoFont {
+        MonoFont {
+            image: ::embedded_graphics::image::ImageRaw::new(
+                include_bytes!("../mono_6x10.raw"),
+                96u32,
+            ),
+            glyph_mapping: mapping,
+            character_size: ::embedded_graphics::geometry::Size::new(6u32, 10u32),
+            character_spacing: 0u32,
+            baseline: 7u32,
+            underline: DecorationDimensions::new(9u32, 1u32),
+            strikethrough: DecorationDimensions::new(5u32, 1u32),
+        }
+    }
+}
