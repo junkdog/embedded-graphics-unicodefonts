@@ -3,8 +3,6 @@ extern crate alloc;
 
 mod mono_8x13_bold;
 
-use alloc::vec::Vec;
-use core::ops;
 use embedded_graphics::mono_font::mapping::GlyphMapping;
 pub use mono_8x13_bold::MONO_8X13_BOLD;
 mod mono_5x7;
