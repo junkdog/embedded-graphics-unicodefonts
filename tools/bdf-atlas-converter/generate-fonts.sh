@@ -27,7 +27,7 @@ fi
 
 # Find all BDF files and filter out localized ones and special fonts
 for font in misc-misc/*.bdf; do
-    if [[ ! "$font" =~ (ja|ko|nil2|k14|O) ]]; then
+    if [[ ! "$font" =~ (ja|ko|nil2|k14) ]]; then
         echo "Processing $font..."
         $BDF_ATLAS_BIN "$font" --output ../../src
     fi

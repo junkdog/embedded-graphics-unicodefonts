@@ -135,8 +135,7 @@ fn rust_font_atlas(
 
 
     let content = format!(
-        r#"
-use embedded_graphics_unicodefonts::atlas::FontAtlas;
+        r#"use crate::atlas::FontAtlas;
 
 /// **Danger**: leaking [`FontAtlas<'static>`] for the lifetime of the program
 pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {{
@@ -166,7 +165,7 @@ fn normalize_font_name(filename: &str) -> String {
     if name.ends_with('B') {
         name.pop();
         name.push_str("_bold");
-    } else if name.ends_with('I') {
+    } else if name.ends_with('O') {
         name.pop();
         name.push_str("_italic");
     }
