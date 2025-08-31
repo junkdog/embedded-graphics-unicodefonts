@@ -1,10 +1,13 @@
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops;
-use embedded_graphics::mono_font::mapping::GlyphMapping;
+use embedded_graphics::mono_font::mapping::{GlyphMapping, StrGlyphMapping};
 
-const ASCII_OFFSET: usize = 0x20;
+/// ASCII space character offset for fast ASCII lookups
+const ASCII_OFFSET: usize = *NamedUnicodeBlock::Ascii.range().start() as usize;
 
-impl GlyphMapping for FontAtlasData {
+impl GlyphMapping for FontAtlas {
+    /// Returns the glyph index for a character, falling back to index 0 (space) if not found
     fn index(&self, c: char) -> usize {
         self.find(c).unwrap_or(0)
     }
@@ -22,32 +25,26 @@ pub enum NamedUnicodeBlock {
     CurrencySymbols,  // 0x20A0..=0x20CF
     Dingbats,         // 0x2700..=0x27BF
     SymbolsAndArrows, // 0x2B00..=0x2BFF
-    TransportAndMap,  // 0x01F680..=0x01F6FF
-    Pictographs,      // 0x01F300..=0x01F5FF
+    TransportAndMap,  // 0x1F680..=0x1F6FF
+    Pictographs,      // 0x1F300..=0x1F5FF
 }
 
-/// Font atlas containing Unicode blocks and additional symbols for glyph lookup
-pub struct FontAtlasData {
+/// Font atlas containing Unicode blocks and additional symbols for efficient glyph lookup.
+///
+/// The atlas stores characters in two categories:
+/// - Contiguous Unicode blocks (e.g., ASCII, Latin-1) for efficient range-based lookup
+/// - Individual symbols stored separately and accessed via binary search
+///
+/// # Performance
+/// - ASCII characters use a fast path with direct offset calculation
+/// - Non-ASCII characters are looked up via binary search within blocks
+/// - Memory usage is optimized for embedded systems
+pub struct FontAtlas {
     blocks: Vec<UnicodeBlock>,
     other_symbols: Vec<char>, // sorted
 }
 
 impl NamedUnicodeBlock {
-    /// Returns all available Unicode blocks
-    pub const fn all() -> &'static [Self] {
-        &[
-            Self::Ascii,
-            Self::Latin1,
-            Self::BlockElements,
-            Self::BoxDrawing,
-            Self::Miscellaneous,
-            Self::BraillePatterns,
-            Self::CurrencySymbols,
-            Self::Dingbats,
-            Self::SymbolsAndArrows,
-        ]
-    }
-
     /// Returns the Unicode range for this block
     pub const fn range(&self) -> ops::RangeInclusive<char> {
         match self {
@@ -60,40 +57,49 @@ impl NamedUnicodeBlock {
             Self::CurrencySymbols  => '\u{20A0}'..='\u{20CF}',
             Self::Dingbats         => '\u{2700}'..='\u{27BF}',
             Self::SymbolsAndArrows => '\u{2B00}'..='\u{2BFF}',
+            Self::Pictographs      => '\u{1F300}'..='\u{1F5FF}',
             Self::TransportAndMap  => '\u{1F680}'..='\u{1F6FF}',
-            Self::Pictographs      => '\u{1F300}'..='\u{1F5FF}'
         }
-    }
-
-    /// Returns the number of characters in this block
-    pub const fn len(&self) -> usize {
-        let r = self.range();
-        *r.end() as usize - *r.start() as usize + 1
-    }
-
-    /// Checks if the symbol is within this block's range
-    pub fn contains(&self, symbol: char) -> bool {
-        self.range().contains(&symbol)
     }
 }
 
 
-impl FontAtlasData {
-    /// Creates a new font atlas from Unicode blocks and additional symbols
-    pub fn new(blocks: &[NamedUnicodeBlock], other_symbols: &[char]) -> Self {
-        let mut other_symbols = other_symbols.to_vec();
-        other_symbols.sort_unstable();
-        other_symbols.dedup();
+impl FontAtlas {
+    /// Creates a font atlas from an iterator of character ranges.
+    ///
+    /// Ranges with multiple characters become Unicode blocks, while single-character
+    /// ranges are stored as individual symbols.
+    ///
+    /// # Panics when debug assertions are enabled if:
+    /// - If the first range doesn't start with ASCII space (U+0020)
+    /// - If ranges are not sorted in ascending order
+    /// - If individual symbols are not sorted in ascending order
+    fn from_ranges(ranges: impl Iterator<Item=ops::RangeInclusive<char>>) -> Self {
+        let (blocks, singles): (Vec<_>, Vec<_>) = ranges
+            .partition(|range| range.start() != range.end());
 
-        let unicode_blocks = into_unicode_blocks(&blocks);
+        debug_assert!(
+            *blocks[0].start() == '\u{0020}',
+            "Invalid FontAtlas: must start with ASCII block"
+        );
+
+        debug_assert!(
+            blocks.windows(2).all(|w| w[0].start() < w[1].start()),
+            "Invalid FontAtlas: ranges must be sorted"
+        );
+
+        debug_assert!(
+            singles.windows(2).all(|w| w[0].start() < w[1].start()),
+            "Invalid FontAtlas: individual symbols must be sorted"
+        );
 
         Self {
-            blocks: unicode_blocks,
-            other_symbols,
+            blocks: into_unicode_blocks(blocks.into_iter()),
+            other_symbols: singles.into_iter().map(|r| *r.start()).collect(),
         }
     }
 
-    /// Returns total number of glyphs in the atlas
+    /// Returns the total number of glyphs in the atlas.
     pub fn len(&self) -> usize {
         let block_len: usize = self
             .blocks
@@ -104,19 +110,25 @@ impl FontAtlasData {
         block_len + self.other_symbols.len()
     }
 
-    /// Iterates over all characters in the atlas
+    /// Returns an iterator over all characters in the atlas.
+    ///
+    /// Unicode blocks are yielded first, followed by individual symbols.
     pub fn iter(&self) -> impl Iterator<Item=char> + '_ {
         self.blocks.iter().flat_map(|b| b.iter()).chain(self.other_symbols.iter().copied())
     }
 
-    /// Checks if the atlas contains the given symbol
+    /// Returns `true` if the atlas contains the given character.
     pub fn contains(&self, symbol: char) -> bool {
         self.blocks.iter().any(|b| b.contains(symbol))
             || self.other_symbols.binary_search(&symbol).is_ok()
     }
 
-    /// Finds the glyph index for a character, returns None if not found
+    /// Finds the glyph index for a character.
+    ///
+    /// # Returns
+    /// The glyph index if the character is in the atlas, `None` otherwise.
     pub fn find(&self, symbol: char) -> Option<usize> {
+        // ca 70% faster with ASCII fast path in benchmarks
         if symbol.is_ascii() {
             return Some(symbol as usize - ASCII_OFFSET);
         }
@@ -126,6 +138,17 @@ impl FontAtlasData {
             .skip(1) // skip ASCII block, handled above
             .find_map(|b| b.try_index(symbol))
             .or_else(|| self.index_of_other_symbol(symbol))
+    }
+
+    /// Leaks the font atlas to obtain a 'static reference.
+    ///
+    /// # Safety
+    /// This permanently leaks memory and should only be used when the atlas needs
+    /// to live for the entire program duration.
+    #[must_use]
+    pub fn leak(self) -> &'static Self {
+        // danger: leaking memory for the lifetime of the program
+        Box::leak(Box::new(self))
     }
 
     fn index_of_other_symbol(&self, symbol: char) -> Option<usize> {
@@ -144,21 +167,36 @@ impl FontAtlasData {
     }
 }
 
-/// A Unicode block with base offset for glyph indexing
+impl From<&str> for FontAtlas {
+    /// Creates a font atlas from a string containing all required characters.
+    /// This assumes the input string is sorted and contains the ASCII range,
+    /// which is what is generated by the `bdf-atlas-converter` tool.
+    ///
+    /// Uses [`StrGlyphMapping`] to extract character ranges from the input string.
+    fn from(glyph_set: &str) -> Self {
+        Self::from_ranges(StrGlyphMapping::new(glyph_set, 0).ranges().map(|(_, range)| range))
+    }
+}
+
+/// Internal representation of a Unicode block with base offset for glyph indexing.
 #[derive(Debug, Clone)]
-pub struct UnicodeBlock {
-    base_offset: u16,
+struct UnicodeBlock {
+    base_offset: u32,
     range: ops::RangeInclusive<char>,
 }
 
 impl UnicodeBlock {
-    pub fn contains(&self, symbol: char) -> bool {
-        self.range.contains(&symbol)
+    fn contains(&self, symbol: char) -> bool {
+        let c = symbol as u32;
+
+        // since blocks are stored in ascending order, we can bail early by
+        // checking the upper bound first
+        c <= *self.range.end() as u32 && c >= *self.range.start() as u32
     }
 
     /// Returns the glyph index for the symbol if it's in this block
-    pub fn try_index(&self, symbol: char) -> Option<usize> {
-        if self.range.contains(&symbol) {
+    fn try_index(&self, symbol: char) -> Option<usize> {
+        if self.contains(symbol) {
             let offset = symbol as usize - *self.range.start() as usize;
             Some(self.base_offset as usize + offset)
         } else {
@@ -166,33 +204,32 @@ impl UnicodeBlock {
         }
     }
 
-    pub fn len(&self) -> usize {
-        *self.range.end() as usize - *self.range.start() as usize + 1
+    fn len(&self) -> usize {
+        range_len(&self.range) as usize
     }
 
     /// Iterates over all characters in the atlas
-    pub fn iter(&self) -> impl Iterator<Item=char> + '_ {
+    fn iter(&self) -> impl Iterator<Item=char> + '_ {
         self.range.clone().into_iter()
     }
 }
 
-fn into_unicode_blocks(blocks: &[NamedUnicodeBlock]) -> Vec<UnicodeBlock> {
-    let mut base_offset = 0u16;
-    let mut result = Vec::with_capacity(blocks.len());
-
-    let mut blocks = blocks.to_vec();
-    blocks.sort();
-    blocks.dedup();
+fn into_unicode_blocks(blocks: impl Iterator<Item=ops::RangeInclusive<char>>) -> Vec<UnicodeBlock> {
+    let mut base_offset = 0u32;
+    let mut result = Vec::with_capacity(blocks.size_hint().0);
 
     for block in blocks {
-        let range = block.range();
+        let block_len = range_len(&block);
         result.push(UnicodeBlock {
             base_offset,
-            range: range.clone(),
+            range: block,
         });
 
-        base_offset += u16::try_from(block.len())
-            .expect("char will always fit into u16 as all defined blocks are within BMP");
+        base_offset += block_len
     }
     result
+}
+
+fn range_len(range: &ops::RangeInclusive<char>) -> u32 {
+    *range.end() as u32 - *range.start() as u32 + 1
 }
