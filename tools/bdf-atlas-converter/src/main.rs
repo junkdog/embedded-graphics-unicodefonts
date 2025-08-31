@@ -32,7 +32,7 @@ fn main() -> Result<()> {
         args.input
             .file_stem()
             .and_then(OsStr::to_str)
-            .map(|s| format!("mono_{s}"))
+            .map(normalize_font_name)
             .map(PathBuf::from)
             .ok_or_else(|| eyre!("Invalid input filename"))?
     };
@@ -44,17 +44,17 @@ fn main() -> Result<()> {
 
     blocks.sort_unstable_by_key(|b| *b.start());
 
-    let name = args.input
+    let basename = args.input
         .file_stem()
         .and_then(OsStr::to_str)
-        .map(|s| format!("mono_{s}"))
+        .map(normalize_font_name)
         .expect("input filename is valid UTF-8");
 
     let mapping_string = generate_ranges_string(&blocks);
-    let font_output = convert_bdf(&args.input, blocks)?;
-    let atlas_src = rust_font_atlas(&name, &font_output, &mapping_string)?;
+    let font_output = convert_bdf(&basename, &args.input, blocks)?;
+    let atlas_src = rust_font_atlas(&basename, &font_output, &mapping_string)?;
 
-    save_font(name, &output_path, atlas_src, font_output)?;
+    save_font(basename, &output_path, atlas_src, font_output)?;
 
     Ok(())
 }
@@ -80,15 +80,11 @@ fn save_font(
 }
 
 fn convert_bdf(
+    basename: &str,
     input: &Path,
     blocks: Vec<RangeInclusive<char>>,
 ) -> Result<MonoFontOutput> {
-    let name = input
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .map(|s| format!("mono_{s}"))
-        .expect("input filename is valid UTF-8");
-
+    let name = basename.to_ascii_uppercase();
     let mut converter = FontConverter::with_file(input, &name);
     for block in blocks {
         converter = converter.glyphs(block);
@@ -113,7 +109,7 @@ fn generate_ranges_string(blocks: &[RangeInclusive<char>]) -> String {
 }
 
 fn rust_font_atlas(
-    font_name: &str,
+    font_basename: &str,
     font_output: &MonoFontOutput,
     mapping_string: &str,
 ) -> Result<String> {
@@ -143,13 +139,13 @@ fn rust_font_atlas(
 use embedded_graphics_unicodefonts::atlas::FontAtlas;
 
 /// **Danger**: leaking [`FontAtlas<'static>`] for the lifetime of the program
-pub fn {font_name}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {{
+pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {{
     let atlas = FontAtlas::from({mapping_string:?})
         .leak();
 
     ::embedded_graphics::mono_font::MonoFont {{
         image: ::embedded_graphics::image::ImageRaw::new(
-            include_bytes!("{font_name}.data"),
+            include_bytes!("{font_basename}.data"),
             0u32,
         ),
         glyph_mapping: atlas,
@@ -162,4 +158,18 @@ pub fn {font_name}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> 
 }}"#);
     
     Ok(content)
+}
+
+fn normalize_font_name(filename: &str) -> String {
+    let mut name = filename.to_string();
+
+    if name.ends_with('B') {
+        name.pop();
+        name.push_str("_bold");
+    } else if name.ends_with('I') {
+        name.pop();
+        name.push_str("_italic");
+    }
+
+    format!("mono_{}", name)
 }
