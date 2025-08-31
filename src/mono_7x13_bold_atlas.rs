@@ -8,7 +8,7 @@ pub fn mono_7x13_bold_atlas() -> ::embedded_graphics::mono_font::MonoFont<'stati
     ::embedded_graphics::mono_font::MonoFont {
         image: ::embedded_graphics::image::ImageRaw::new(
             include_bytes!("raw/mono_7x13_bold.data"),
-            0u32,
+            112u32,
         ),
         glyph_mapping: atlas,
         character_size: ::embedded_graphics::geometry::Size::new(7u32, 13u32),

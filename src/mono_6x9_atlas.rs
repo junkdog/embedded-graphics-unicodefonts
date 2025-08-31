@@ -8,7 +8,7 @@ pub fn mono_6x9_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {
     ::embedded_graphics::mono_font::MonoFont {
         image: ::embedded_graphics::image::ImageRaw::new(
             include_bytes!("raw/mono_6x9.data"),
-            0u32,
+            96u32,
         ),
         glyph_mapping: atlas,
         character_size: ::embedded_graphics::geometry::Size::new(6u32, 9u32),
