@@ -25,6 +25,9 @@ else
     cd misc-misc && git pull && cd ..
 fi
 
+# Create raw directory if it doesn't exist
+mkdir -p ../../src/raw
+
 # Find all BDF files and filter out localized ones and special fonts
 for font in misc-misc/*.bdf; do
     if [[ ! "$font" =~ (ja|ko|nil2|k14) ]]; then
@@ -32,6 +35,14 @@ for font in misc-misc/*.bdf; do
         $BDF_ATLAS_BIN "$font" --output ../../src
     fi
 done
+
+# Bulk move all .data files to raw/ directory
+echo "Moving .data files to raw/ directory..."
+mv ../../src/*.data ../../src/raw/ 2>/dev/null || true
+
+# Update all .rs files to use raw/ prefix for includes that don't already have it
+echo "Updating .rs files to use raw/ prefix..."
+sed -i '/include_bytes!("raw\/m/!s/include_bytes!("m\([^"]*\)\.data")/include_bytes!("raw\/m\1.data")/g' ../../src/mono_*.rs
 
 echo "Font generation complete!"
 
