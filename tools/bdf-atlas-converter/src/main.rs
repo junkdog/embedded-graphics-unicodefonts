@@ -147,7 +147,7 @@ pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'stat
     ::embedded_graphics::mono_font::MonoFont {{
         image: ::embedded_graphics::image::ImageRaw::new(
             include_bytes!("{font_basename}.data"),
-            0u32,
+            {texture_width}u32,
         ),
         glyph_mapping: atlas,
         character_size: ::embedded_graphics::geometry::Size::new({character_width}u32, {character_height}u32),
@@ -156,7 +156,8 @@ pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'stat
         underline: ::embedded_graphics::mono_font::DecorationDimensions::new({underline_offset}u32, {underline_height}u32),
         strikethrough: ::embedded_graphics::mono_font::DecorationDimensions::new({strikethrough_offset}u32, {strikethrough_height}u32),
     }}
-}}"#
+}}"#,
+        texture_width = character_width * 16
     );
 
     Ok(content)
