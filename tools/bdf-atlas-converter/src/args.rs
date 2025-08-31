@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(about = "Convert BDF fonts using eg-font-converter")]
+#[command(about = "Convert BDF fonts using to atlas-backed embedded fonts")]
 pub struct Args {
     /// Input BDF file
     #[arg(value_parser = validate_file_exists)]
