@@ -92,6 +92,7 @@ pub use mono_8x13_italic::MONO_8X13_ITALIC;
 mod mono_8x13_italic_atlas;
 pub use mono_8x13_italic_atlas::*;
 mod mono_8x13;
+pub use mono_8x13::MONO_8X13;
 mod mono_8x13_bold_atlas;
 pub use mono_8x13_bold_atlas::*;
 

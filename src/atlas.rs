@@ -100,7 +100,7 @@ impl FontAtlas {
     }
 
     /// Returns the total number of glyphs in the atlas.
-    pub fn len(&self) -> usize {
+    pub fn glyph_count(&self) -> usize {
         let block_len: usize = self
             .blocks
             .last()
@@ -210,7 +210,7 @@ impl UnicodeBlock {
 
     /// Iterates over all characters in the atlas
     fn iter(&self) -> impl Iterator<Item=char> + '_ {
-        self.range.clone().into_iter()
+        self.range.clone()
     }
 }
 

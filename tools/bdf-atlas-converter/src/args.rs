@@ -1,6 +1,6 @@
+use clap::Parser;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
-use clap::Parser;
 
 #[derive(Parser)]
 #[command(about = "Convert BDF fonts using eg-font-converter")]
@@ -31,12 +31,18 @@ fn parse_unicode_range(s: &str) -> std::result::Result<RangeInclusive<char>, Str
             .ok_or_else(|| format!("Invalid Unicode code point: 0x{:x}", end_code))?;
 
         if start_code > end_code {
-            return Err(format!("Start value (0x{:x}) cannot be greater than end value (0x{:x})", start_code, end_code));
+            return Err(format!(
+                "Start value (0x{:x}) cannot be greater than end value (0x{:x})",
+                start_code, end_code
+            ));
         }
 
         Ok(start_char..=end_char)
     } else {
-        Err(format!("Invalid range format '{}'. Expected format: 0x20..0x7f", s))
+        Err(format!(
+            "Invalid range format '{}'. Expected format: 0x20..0x7f",
+            s
+        ))
     }
 }
 

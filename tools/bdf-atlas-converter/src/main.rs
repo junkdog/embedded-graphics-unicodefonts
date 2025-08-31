@@ -1,15 +1,15 @@
 mod args;
 
-use std::ffi::OsStr;
-use std::ops::RangeInclusive;
+use crate::args::Args;
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
-use std::path::{Path, PathBuf};
 use eg_font_converter::{FontConverter, MonoFontOutput};
 use embedded_graphics::geometry::Size;
 use embedded_graphics::mono_font::{DecorationDimensions, MonoFont};
 use embedded_graphics_unicodefonts::atlas::NamedUnicodeBlock;
-use crate::args::Args;
+use std::ffi::OsStr;
+use std::ops::RangeInclusive;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_BLOCKS: &[NamedUnicodeBlock] = &[
     NamedUnicodeBlock::Ascii,
@@ -37,14 +37,16 @@ fn main() -> Result<()> {
             .ok_or_else(|| eyre!("Invalid input filename"))?
     };
 
-    let mut blocks = DEFAULT_BLOCKS.iter()
+    let mut blocks = DEFAULT_BLOCKS
+        .iter()
         .map(|b| b.range())
-        .chain(args.ranges.into_iter())
+        .chain(args.ranges)
         .collect::<Vec<RangeInclusive<_>>>();
 
     blocks.sort_unstable_by_key(|b| *b.start());
 
-    let basename = args.input
+    let basename = args
+        .input
         .file_stem()
         .and_then(OsStr::to_str)
         .map(normalize_font_name)
@@ -63,14 +65,14 @@ fn save_font(
     name: String,
     output_path: &PathBuf,
     atlas_src: String,
-    font_output: MonoFontOutput
+    font_output: MonoFontOutput,
 ) -> Result<()> {
     if !output_path.exists() {
-        std::fs::create_dir_all(&output_path)?;
+        std::fs::create_dir_all(output_path)?;
     }
 
     // save the .data file + standard .rs file
-    font_output.save(&output_path)?;
+    font_output.save(output_path)?;
 
     // save the atlas .rs file
     let atlas_file_path = output_path.join(format!("{name}_atlas.rs"));
@@ -98,13 +100,13 @@ fn convert_bdf(
 
 fn generate_ranges_string(blocks: &[RangeInclusive<char>]) -> String {
     let mut result = String::new();
-    
+
     for range in blocks {
-        result.push('\0');  // Range start marker
+        result.push('\0'); // Range start marker
         result.push(*range.start()); // Range start character
-        result.push(*range.end());   // Range end character
+        result.push(*range.end()); // Range end character
     }
-    
+
     result
 }
 
@@ -113,26 +115,26 @@ fn rust_font_atlas(
     font_output: &MonoFontOutput,
     mapping_string: &str,
 ) -> Result<String> {
-
     let MonoFont {
         character_size:
-        Size {
-            width: character_width,
-            height: character_height,
-        },
+            Size {
+                width: character_width,
+                height: character_height,
+            },
         character_spacing,
         baseline,
-        underline: DecorationDimensions {
-            offset: underline_offset,
-            height: underline_height,
-        },
-        strikethrough: DecorationDimensions {
-            offset: strikethrough_offset,
-            height: strikethrough_height,
-        },
+        underline:
+            DecorationDimensions {
+                offset: underline_offset,
+                height: underline_height,
+            },
+        strikethrough:
+            DecorationDimensions {
+                offset: strikethrough_offset,
+                height: strikethrough_height,
+            },
         ..
     } = font_output.as_font();
-
 
     let content = format!(
         r#"use crate::atlas::FontAtlas;
@@ -154,8 +156,9 @@ pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'stat
         underline: ::embedded_graphics::mono_font::DecorationDimensions::new({underline_offset}u32, {underline_height}u32),
         strikethrough: ::embedded_graphics::mono_font::DecorationDimensions::new({strikethrough_offset}u32, {strikethrough_height}u32),
     }}
-}}"#);
-    
+}}"#
+    );
+
     Ok(content)
 }
 
