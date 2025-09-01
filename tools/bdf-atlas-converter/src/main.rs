@@ -68,11 +68,7 @@ fn cmd_font_info(args: Args) -> Result<()> {
     println!("  Resolution: {}x{} dpi", font.metadata.resolution.x, font.metadata.resolution.y);
     println!();
     
-    println!("Character Coverage:");
-    println!("  Total glyphs: {}", total_glyphs);
-    println!("  Ranges: {}", glyph_layout.ranges.len());
-    println!("  Gaps (wasted): {}", glyph_layout.skipped_chars_count);
-    println!("  Single characters: {}", glyph_layout.singles.len());
+    print_glyph_summary(&args.input, None, total_glyphs, &glyph_layout);
     println!();
     
     if !glyph_layout.ranges.is_empty() {
@@ -121,6 +117,28 @@ fn cmd_font_info(args: Args) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_glyph_summary(
+    input_path: &std::path::Path,
+    output_path: Option<&std::path::Path>,
+    total_glyphs: usize,
+    glyph_layout: &GlyphLayout,
+) {
+    let total_range_chars: u32 = glyph_layout.ranges.iter()
+        .map(|r| r.end() - r.start() + 1)
+        .sum();
+
+    println!("Character Coverage:");
+    println!("  Total glyphs: {}", total_glyphs);
+    println!("  Ranges: {} ({} chars total)", glyph_layout.ranges.len(), total_range_chars);
+    println!("  Gaps (wasted): {}", glyph_layout.skipped_chars_count);
+    println!("  Single characters: {}", glyph_layout.singles.len());
+
+    if let Some(output) = output_path {
+        println!("  Input: {}", input_path.display());
+        println!("  Output: {}", output.display());
+    }
 }
 
 fn layout_glyphs(
@@ -229,6 +247,8 @@ fn cmd_convert_font(args: Args) -> Result<()> {
     filtered_glyphs.sort_unstable();
     filtered_glyphs.dedup();
 
+    let total_filtered_glyphs = filtered_glyphs.len();
+    
     // Use layout algorithm to organize filtered glyphs into optimal ranges and singles
     let glyph_layout: GlyphLayout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
     
@@ -251,17 +271,26 @@ fn cmd_convert_font(args: Args) -> Result<()> {
 
     blocks.sort_unstable_by_key(|b| *b.start());
 
-    let basename = args.input
+    let mut basename = args.input
         .file_stem()
         .and_then(OsStr::to_str)
         .map(normalize_font_name)
         .expect("input filename is valid UTF-8");
+    
+    // Append suffix if provided
+    if let Some(suffix) = &args.suffix {
+        basename.push_str(suffix);
+    }
 
     let mapping_string = generate_ranges_string(&blocks);
     let font_output = convert_bdf(&basename, &args.input, blocks)?;
     let atlas_src = rust_font_atlas(&basename, &font_output, &mapping_string)?;
 
     save_font(basename, &output_path, atlas_src, font_output, args.save_png)?;
+
+    // Print summary of what was generated
+    println!("\nFont Generation Summary:");
+    print_glyph_summary(&args.input, Some(&output_path), total_filtered_glyphs, &glyph_layout);
 
     Ok(())
 }
@@ -288,7 +317,6 @@ fn save_font(
     if save_png {
         let png_path = output_path.join(format!("{name}.png"));
         font_output.save_png(&png_path).map_err(|e| eyre!("Failed to save PNG: {}", e))?;
-        println!("Saved PNG: {}", png_path.display());
     }
 
     Ok(())

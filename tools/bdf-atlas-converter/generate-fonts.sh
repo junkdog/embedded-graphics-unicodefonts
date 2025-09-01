@@ -28,12 +28,25 @@ fi
 # Create raw directory if it doesn't exist
 mkdir -p ../../src/raw
 
+# Build optimized fonts
 # Find all BDF files and filter out localized ones and special fonts
 for font in misc-misc/*.bdf; do
     if [[ ! "$font" =~ (ja|ko|nil2|k14) ]]; then
         echo "Processing $font..."
-        $BDF_ATLAS_BIN "$font" --output ../../src
+        $BDF_ATLAS_BIN "$font" \
+            --suffix="_optimized" \
+            --gap-threshold=2 \
+            --output ../../src
     fi
+done
+
+# Optimize full font sets
+for font in misc-misc/*.bdf; do
+    echo "Rebuilding $font..."
+    $BDF_ATLAS_BIN "$font" \
+        --range 0x0020..0xffff \
+        --gap-threshold=2 \
+        --output ../../src
 done
 
 # Bulk move all .data files to raw/ directory

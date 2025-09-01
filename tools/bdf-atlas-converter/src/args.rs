@@ -32,6 +32,10 @@ pub struct Args {
     /// Save a PNG image of the generated font atlas
     #[arg(long)]
     pub save_png: bool,
+
+    /// Optional suffix to append to font names (e.g. "_optimized")
+    #[arg(long)]
+    pub suffix: Option<String>,
 }
 
 fn parse_unicode_range(s: &str) -> std::result::Result<RangeInclusive<char>, String> {
