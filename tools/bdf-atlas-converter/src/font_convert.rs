@@ -1,0 +1,246 @@
+use crate::args::Args;
+use crate::font_info::print_glyph_summary;
+use crate::layout::{into_blocks, layout_glyphs};
+use crate::utils::{extract_glyphs_from_font, load_font};
+use bdf_parser::Font;
+use color_eyre::{eyre::eyre, Result};
+use eg_font_converter::{FontConverter, MonoFontOutput};
+use embedded_graphics::geometry::Size;
+use embedded_graphics::mono_font::{DecorationDimensions, MonoFont};
+use embedded_graphics_unicodefonts::atlas::NamedUnicodeBlock;
+use std::ffi::OsStr;
+use std::ops::RangeInclusive;
+use std::path::{Path, PathBuf};
+
+const DEFAULT_BLOCKS: &[NamedUnicodeBlock] = &[
+    NamedUnicodeBlock::Ascii,
+    NamedUnicodeBlock::Latin1,
+    NamedUnicodeBlock::BoxDrawing,
+    NamedUnicodeBlock::BlockElements,
+    NamedUnicodeBlock::Miscellaneous,
+    NamedUnicodeBlock::BraillePatterns,
+    NamedUnicodeBlock::CurrencySymbols,
+    NamedUnicodeBlock::SymbolsAndArrows,
+];
+
+pub fn cmd_convert_font(args: Args) -> Result<()> {
+    let output_path = determine_output_path(&args)?;
+    let font = load_font(&args.input)?;
+    let filtered_glyphs = build_filtered_glyphs(&font, &args.ranges);
+    let total_filtered_glyphs = filtered_glyphs.len();
+
+    let glyph_layout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
+    let blocks = into_blocks(&glyph_layout);
+    let basename = create_font_basename(&args.input, args.suffix.as_deref())?;
+
+    let (font_output, atlas_src) = generate_font_files(&basename, &args.input, blocks)?;
+
+    save_font(
+        basename,
+        &output_path,
+        atlas_src,
+        font_output,
+        args.save_png,
+    )?;
+
+    // Print summary of what was generated
+    println!("\nFont Generation Summary:");
+    print_glyph_summary(
+        &args.input,
+        Some(&output_path),
+        total_filtered_glyphs,
+        &glyph_layout,
+    );
+
+    Ok(())
+}
+
+fn determine_output_path(args: &Args) -> Result<PathBuf> {
+    if let Some(path) = &args.output {
+        Ok(path.clone())
+    } else {
+        args.input
+            .file_stem()
+            .and_then(OsStr::to_str)
+            .map(normalize_font_name)
+            .map(PathBuf::from)
+            .ok_or_else(|| eyre!("Invalid input filename"))
+    }
+}
+
+fn build_filtered_glyphs(font: &Font, additional_ranges: &[RangeInclusive<char>]) -> Vec<u32> {
+    let available_glyphs: std::collections::HashSet<u32> =
+        extract_glyphs_from_font(font).into_iter().collect();
+
+    // Get requested ranges (default blocks + command line ranges)
+    let requested_ranges: Vec<RangeInclusive<char>> = DEFAULT_BLOCKS
+        .iter()
+        .map(|b| b.range())
+        .chain(additional_ranges.iter().cloned())
+        .collect();
+
+    // Filter requested ranges to only include available glyphs
+    let mut filtered_glyphs: Vec<u32> = Vec::new();
+    for range in requested_ranges {
+        for code_point in (*range.start() as u32)..=(*range.end() as u32) {
+            if available_glyphs.contains(&code_point) {
+                filtered_glyphs.push(code_point);
+            }
+        }
+    }
+
+    filtered_glyphs.sort_unstable();
+    filtered_glyphs.dedup();
+    filtered_glyphs
+}
+
+fn create_font_basename(input: &Path, suffix: Option<&str>) -> Result<String> {
+    let mut basename = input
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .map(normalize_font_name)
+        .ok_or_else(|| eyre!("Invalid input filename"))?;
+
+    if let Some(suffix) = suffix {
+        basename.push_str(suffix);
+    }
+
+    Ok(basename)
+}
+
+fn generate_font_files(
+    basename: &str,
+    input: &Path,
+    blocks: Vec<RangeInclusive<char>>,
+) -> Result<(MonoFontOutput, String)> {
+    let mapping_string = generate_ranges_string(&blocks);
+    let font_output = convert_bdf(basename, input, blocks)?;
+    let atlas_src = rust_font_atlas(basename, &font_output, &mapping_string)?;
+
+    Ok((font_output, atlas_src))
+}
+
+fn save_font(
+    name: String,
+    output_path: &PathBuf,
+    atlas_src: String,
+    font_output: MonoFontOutput,
+    save_png: bool,
+) -> Result<()> {
+    if !output_path.exists() {
+        std::fs::create_dir_all(output_path)?;
+    }
+
+    // save the .data file + standard .rs file
+    font_output.save(output_path)?;
+
+    // save the atlas .rs file
+    let atlas_file_path = output_path.join(format!("{name}_atlas.rs"));
+    std::fs::write(&atlas_file_path, atlas_src)?;
+
+    // save PNG if requested
+    if save_png {
+        let png_path = output_path.join(format!("{name}.png"));
+        font_output
+            .save_png(&png_path)
+            .map_err(|e| eyre!("Failed to save PNG: {}", e))?;
+    }
+
+    Ok(())
+}
+
+fn convert_bdf(
+    basename: &str,
+    input: &Path,
+    blocks: Vec<RangeInclusive<char>>,
+) -> Result<MonoFontOutput> {
+    let name = basename.to_ascii_uppercase();
+    let mut converter = FontConverter::with_file(input, &name);
+    for block in blocks {
+        converter = converter.glyphs(block);
+    }
+
+    converter
+        .missing_glyph_substitute(' ')
+        .convert_mono_font()
+        .map_err(|e| eyre!("{}", e))
+}
+
+fn generate_ranges_string(blocks: &[RangeInclusive<char>]) -> String {
+    let mut result = String::new();
+
+    for range in blocks {
+        result.push('\0'); // Range start marker
+        result.push(*range.start()); // Range start character
+        result.push(*range.end()); // Range end character
+    }
+
+    result
+}
+
+fn rust_font_atlas(
+    font_basename: &str,
+    font_output: &MonoFontOutput,
+    mapping_string: &str,
+) -> Result<String> {
+    let MonoFont {
+        character_size:
+            Size {
+                width: character_width,
+                height: character_height,
+            },
+        character_spacing,
+        baseline,
+        underline:
+            DecorationDimensions {
+                offset: underline_offset,
+                height: underline_height,
+            },
+        strikethrough:
+            DecorationDimensions {
+                offset: strikethrough_offset,
+                height: strikethrough_height,
+            },
+        ..
+    } = font_output.as_font();
+
+    let content = format!(
+        r#"use crate::atlas::FontAtlas;
+
+/// **Danger**: leaking [`FontAtlas<'static>`] for the lifetime of the program
+pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {{
+    let atlas = FontAtlas::from({mapping_string:?})
+        .leak();
+
+    ::embedded_graphics::mono_font::MonoFont {{
+        image: ::embedded_graphics::image::ImageRaw::new(
+            include_bytes!("{font_basename}.data"),
+            {texture_width}u32,
+        ),
+        glyph_mapping: atlas,
+        character_size: ::embedded_graphics::geometry::Size::new({character_width}u32, {character_height}u32),
+        character_spacing: {character_spacing}u32,
+        baseline: {baseline}u32,
+        underline: ::embedded_graphics::mono_font::DecorationDimensions::new({underline_offset}u32, {underline_height}u32),
+        strikethrough: ::embedded_graphics::mono_font::DecorationDimensions::new({strikethrough_offset}u32, {strikethrough_height}u32),
+    }}
+}}"#,
+        texture_width = character_width * 16
+    );
+
+    Ok(content)
+}
+
+fn normalize_font_name(filename: &str) -> String {
+    let mut name = filename.to_string();
+
+    if name.ends_with('B') {
+        name.pop();
+        name.push_str("_bold");
+    } else if name.ends_with('O') {
+        name.pop();
+        name.push_str("_italic");
+    }
+
+    format!("mono_{}", name)
+}
