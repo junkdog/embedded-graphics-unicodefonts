@@ -40,18 +40,12 @@ struct GlyphLayout {
     skipped_chars_count: u32,
 }
 
+
 fn cmd_font_info(args: Args) -> Result<()> {
     let font_content = std::fs::read_to_string(&args.input)?;
     let font = Font::parse(&font_content)?;
 
-    let mut glyphs: Vec<u32> = font.glyphs
-        .iter()
-        .map(|g| match g.encoding {
-            Encoding::Standard(v) => v,
-            Encoding::NonStandard(v) => v,
-            Encoding::Unspecified => panic!("Unspecified encoding: {:?}", g),
-        })
-        .collect();
+    let mut glyphs: Vec<u32> = iter_glyphs(&font).collect();
     glyphs.sort_unstable();
     
     let total_glyphs = glyphs.len();
@@ -253,23 +247,7 @@ fn cmd_convert_font(args: Args) -> Result<()> {
     let glyph_layout: GlyphLayout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
     
     // Convert to character ranges for font conversion
-    let mut blocks: Vec<RangeInclusive<char>> = glyph_layout.ranges
-        .iter()
-        .map(|r| {
-            let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
-            let end_char = char::from_u32(*r.end()).unwrap_or('\u{FFFD}');
-            start_char..=end_char
-        })
-        .collect();
-
-    // Add individual characters as single-character ranges
-    for &glyph_code in &glyph_layout.singles {
-        if let Some(ch) = char::from_u32(glyph_code) {
-            blocks.push(ch..=ch);
-        }
-    }
-
-    blocks.sort_unstable_by_key(|b| *b.start());
+    let blocks = into_blocks(&glyph_layout);
 
     let mut basename = args.input
         .file_stem()
@@ -293,6 +271,27 @@ fn cmd_convert_font(args: Args) -> Result<()> {
     print_glyph_summary(&args.input, Some(&output_path), total_filtered_glyphs, &glyph_layout);
 
     Ok(())
+}
+
+fn into_blocks(glyph_layout: &GlyphLayout) -> Vec<RangeInclusive<char>> {
+    let mut blocks: Vec<RangeInclusive<char>> = glyph_layout.ranges
+        .iter()
+        .map(|r| {
+            let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
+            let end_char = char::from_u32(*r.end()).unwrap_or('\u{FFFD}');
+            start_char..=end_char
+        })
+        .collect();
+
+    // Add individual characters as single-character ranges
+    for &glyph_code in &glyph_layout.singles {
+        if let Some(ch) = char::from_u32(glyph_code) {
+            blocks.push(ch..=ch);
+        }
+    }
+
+    blocks.sort_unstable_by_key(|b| *b.start());
+    blocks
 }
 
 fn save_font(
@@ -416,6 +415,14 @@ fn normalize_font_name(filename: &str) -> String {
     }
 
     format!("mono_{}", name)
+}
+
+fn iter_glyphs(font: &Font) -> impl Iterator<Item = u32> + '_ {
+    font.glyphs.iter().filter_map(|g| match g.encoding {
+        Encoding::Standard(v) => Some(v),
+        Encoding::NonStandard(v) => Some(v),
+        Encoding::Unspecified => None,
+    })
 }
 
 #[cfg(test)]
