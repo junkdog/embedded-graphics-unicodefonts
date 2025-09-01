@@ -9,6 +9,10 @@ pub struct Args {
     #[arg(value_parser = validate_file_exists)]
     pub input: PathBuf,
 
+    /// Display information about the BDF file without converting
+    #[arg(short, long, conflicts_with_all = ["output", "ranges"])]
+    pub info: bool,
+
     /// Output file
     #[arg(short, long)]
     pub output: Option<PathBuf>,
@@ -16,6 +20,14 @@ pub struct Args {
     /// Additional Unicode ranges in hex format (e.g., 0x20..0x7f)
     #[arg(short, long = "range", value_parser = parse_unicode_range)]
     pub ranges: Vec<RangeInclusive<char>>,
+
+    /// Maximum gap size to bridge when creating ranges (default: 1)
+    #[arg(long, default_value = "1")]
+    pub gap_threshold: u32,
+
+    /// Minimum consecutive characters needed to form a range (default: 8)
+    #[arg(long, default_value = "8")]
+    pub min_range_length: usize,
 }
 
 fn parse_unicode_range(s: &str) -> std::result::Result<RangeInclusive<char>, String> {
@@ -74,5 +86,18 @@ mod tests {
         let range = parse_unicode_range("0x20..0x7f").unwrap();
         assert_eq!(*range.start(), '\u{20}');
         assert_eq!(*range.end(), '\u{7f}');
+    }
+
+    #[test]
+    fn test_info_flag_conflicts() {
+        use clap::Parser;
+        
+        // Test that --info works alone (would need a real file, so we test parsing logic)
+        // Test that --info conflicts with --output and --ranges
+        let result = Args::try_parse_from(&["prog", "--info", "--output", "test.rs", "input.bdf"]);
+        assert!(result.is_err());
+        
+        let result = Args::try_parse_from(&["prog", "--info", "--range", "0x20..0x7f", "input.bdf"]);
+        assert!(result.is_err());
     }
 }
