@@ -10,9 +10,14 @@ Arguments:
   <INPUT>  Input BDF file
 
 Options:
-  -o, --output <OUTPUT>    Output directory [default: normalized font name]
-  -r, --range <RANGES>...  Additional Unicode ranges in hex format (e.g., 0x20..0x7f)
-  -h, --help              Print help
+  -i, --info                           Display information about the BDF file without converting
+  -o, --output <OUTPUT>               Output file
+  -r, --range <RANGES>                Additional Unicode ranges in hex format (e.g., 0x20..0x7f)
+      --gap-threshold <GAP_THRESHOLD> Maximum gap size to bridge when creating ranges [default: 1]
+      --min-range-length <MIN_RANGE_LENGTH> Minimum consecutive characters needed to form a range [default: 8]
+      --save-png                      Save a PNG image of the generated font atlas
+      --suffix <SUFFIX>               Optional suffix to append to font names (e.g. "_optimized")
+  -h, --help                          Print help
 ```
 
 ## Overview
@@ -29,8 +34,17 @@ All font files in the main `embedded-graphics-unicodefonts` crate are generated 
 # Build the tool
 cargo build --release
 
+# Display information about a BDF font without converting
+cargo run -- input.bdf --info
+
 # Convert a single BDF font
 cargo run -- input.bdf --output ../../src
+
+# Convert with custom suffix and range optimization settings
+cargo run -- input.bdf --suffix "_optimized" --gap-threshold 2 --min-range-length 4
+
+# Generate PNG visualization of the font atlas
+cargo run -- input.bdf --save-png
 
 # Generate all fonts using the automated script
 ./generate-fonts.sh
@@ -61,7 +75,31 @@ Atlas fonts include these Unicode blocks by default:
 Additional ranges can be specified using the `--range` option:
 
 ```bash
-cargo run -- font.bdf --range 0x1F680..0x1F6FF --range 0x1F300..=0x1F5FF
+cargo run -- font.bdf --range 0x1F680..0x1F6FF --range 0x1F300..0x1F5FF
+```
+
+## Advanced Options
+
+### Range Optimization
+
+- `--gap-threshold <N>`: Bridges gaps between characters when forming ranges. Default: 1
+- `--min-range-length <N>`: Minimum consecutive characters needed to form a range. Default: 8
+
+### Font Name Suffixes
+
+Use `--suffix` to create font variants:
+
+```bash
+# Creates mono_6x13_optimized.rs instead of mono_6x13.rs
+cargo run -- 6x13.bdf --suffix "_optimized"
+```
+
+### PNG Generation
+
+The `--save-png` flag generates a visual representation of the font atlas:
+
+```bash
+cargo run -- input.bdf --save-png --output ../../assets
 ```
 
 ## FontAtlas integration with embedded-graphics-unicodefonts
