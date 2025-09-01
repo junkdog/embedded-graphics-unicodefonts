@@ -1,6 +1,7 @@
 mod args;
 
 use crate::args::Args;
+use bdf_parser::{Encoding, Font};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use eg_font_converter::{FontConverter, MonoFontOutput};
@@ -10,7 +11,6 @@ use embedded_graphics_unicodefonts::atlas::NamedUnicodeBlock;
 use std::ffi::OsStr;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
-use bdf_parser::{Encoding, Font};
 
 const DEFAULT_BLOCKS: &[NamedUnicodeBlock] = &[
     NamedUnicodeBlock::Ascii,
@@ -40,64 +40,84 @@ struct GlyphLayout {
     skipped_chars_count: u32,
 }
 
-
 fn cmd_font_info(args: Args) -> Result<()> {
     let font_content = std::fs::read_to_string(&args.input)?;
     let font = Font::parse(&font_content)?;
 
     let mut glyphs: Vec<u32> = iter_glyphs(&font).collect();
     glyphs.sort_unstable();
-    
+
     let total_glyphs = glyphs.len();
 
     // join glyphs into ranges
-    let glyph_layout: GlyphLayout = layout_glyphs(glyphs, args.gap_threshold, args.min_range_length);
+    let glyph_layout: GlyphLayout =
+        layout_glyphs(glyphs, args.gap_threshold, args.min_range_length);
 
     println!("Font Information: {}", args.input.display());
     println!("Font Properties:");
     println!("  Name: {}", font.metadata.name);
-    println!("  Bounding box size: {}x{}", font.metadata.bounding_box.size.x, font.metadata.bounding_box.size.y);
-    println!("  Bounding box offset: ({}, {})", font.metadata.bounding_box.offset.x, font.metadata.bounding_box.offset.y);
+    println!(
+        "  Bounding box size: {}x{}",
+        font.metadata.bounding_box.size.x, font.metadata.bounding_box.size.y
+    );
+    println!(
+        "  Bounding box offset: ({}, {})",
+        font.metadata.bounding_box.offset.x, font.metadata.bounding_box.offset.y
+    );
     println!("  Point size: {}", font.metadata.point_size);
-    println!("  Resolution: {}x{} dpi", font.metadata.resolution.x, font.metadata.resolution.y);
+    println!(
+        "  Resolution: {}x{} dpi",
+        font.metadata.resolution.x, font.metadata.resolution.y
+    );
     println!();
-    
+
     print_glyph_summary(&args.input, None, total_glyphs, &glyph_layout);
     println!();
-    
+
     if !glyph_layout.ranges.is_empty() {
-        let total_range_chars: u32 = glyph_layout.ranges.iter()
+        let total_range_chars: u32 = glyph_layout
+            .ranges
+            .iter()
             .map(|r| r.end() - r.start() + 1)
             .sum();
         println!("Unicode Ranges ({} chars total):", total_range_chars);
-        
+
         // First range has no gap info
         if let Some(first_range) = glyph_layout.ranges.first() {
             let start_char = char::from_u32(*first_range.start()).unwrap_or('�');
             let end_char = char::from_u32(*first_range.end()).unwrap_or('�');
-            println!("  U+{:04X}..U+{:04X} ({} chars) '{}' to '{}'", 
-                first_range.start(), first_range.end(), 
+            println!(
+                "  U+{:04X}..U+{:04X} ({} chars) '{}' to '{}'",
+                first_range.start(),
+                first_range.end(),
                 first_range.end() - first_range.start() + 1,
-                start_char, end_char);
+                start_char,
+                end_char
+            );
         }
-        
+
         // Subsequent ranges show gap from previous range
         for window in glyph_layout.ranges.windows(2) {
             let prev_range = &window[0];
             let curr_range = &window[1];
             let gap = curr_range.start() - prev_range.end() - 1;
-            
+
             let start_char = char::from_u32(*curr_range.start()).unwrap_or('�');
             let end_char = char::from_u32(*curr_range.end()).unwrap_or('�');
-            
-            println!("  U+{:04X}..U+{:04X} ({} chars) '{}' to '{}' (gap: {} chars)", 
-                curr_range.start(), curr_range.end(), 
+
+            println!(
+                "  U+{:04X}..U+{:04X} ({} chars) '{}' to '{}' (gap: {} chars)",
+                curr_range.start(),
+                curr_range.end(),
                 curr_range.end() - curr_range.start() + 1,
-                start_char, end_char, gap);
+                start_char,
+                end_char,
+                gap
+            );
         }
         println!();
     }
-    
+
     if !glyph_layout.singles.is_empty() {
         println!("Individual Characters:");
         for (i, &code) in glyph_layout.singles.iter().enumerate() {
@@ -119,13 +139,19 @@ fn print_glyph_summary(
     total_glyphs: usize,
     glyph_layout: &GlyphLayout,
 ) {
-    let total_range_chars: u32 = glyph_layout.ranges.iter()
+    let total_range_chars: u32 = glyph_layout
+        .ranges
+        .iter()
         .map(|r| r.end() - r.start() + 1)
         .sum();
 
     println!("Character Coverage:");
     println!("  Total glyphs: {}", total_glyphs);
-    println!("  Ranges: {} ({} chars total)", glyph_layout.ranges.len(), total_range_chars);
+    println!(
+        "  Ranges: {} ({} chars total)",
+        glyph_layout.ranges.len(),
+        total_range_chars
+    );
     println!("  Gaps (wasted): {}", glyph_layout.skipped_chars_count);
     println!("  Single characters: {}", glyph_layout.singles.len());
 
@@ -138,7 +164,7 @@ fn print_glyph_summary(
 fn layout_glyphs(
     mut glyphs: Vec<u32>,
     max_gap_threshold: u32,
-    min_range_length: usize
+    min_range_length: usize,
 ) -> GlyphLayout {
     if glyphs.is_empty() {
         return GlyphLayout {
@@ -147,17 +173,17 @@ fn layout_glyphs(
             skipped_chars_count: 0,
         };
     }
-    
+
     glyphs.sort_unstable();
     glyphs.dedup();
-    
+
     let mut ranges = Vec::new();
     let mut singles = Vec::new();
     let mut skipped_chars_count = 0;
-    
+
     let mut range_start = glyphs[0];
     let mut range_end = glyphs[0];
-    
+
     for &glyph in &glyphs[1..] {
         if glyph <= range_end + 1 + max_gap_threshold {
             // Count characters we're skipping in the gap
@@ -177,13 +203,13 @@ fn layout_glyphs(
                     singles.push(code);
                 }
             }
-            
+
             // Start new range
             range_start = glyph;
             range_end = glyph;
         }
     }
-    
+
     // Handle the last range
     let range_length = (range_end - range_start + 1) as usize;
     if range_length >= min_range_length {
@@ -193,15 +219,20 @@ fn layout_glyphs(
             singles.push(code);
         }
     }
-    
-    GlyphLayout { ranges, singles, skipped_chars_count }
+
+    GlyphLayout {
+        ranges,
+        singles,
+        skipped_chars_count,
+    }
 }
 
 fn cmd_convert_font(args: Args) -> Result<()> {
     let output_path = if let Some(path) = args.output {
         path
     } else {
-        args.input.file_stem()
+        args.input
+            .file_stem()
             .and_then(OsStr::to_str)
             .map(normalize_font_name)
             .map(PathBuf::from)
@@ -212,7 +243,8 @@ fn cmd_convert_font(args: Args) -> Result<()> {
     let font_content = std::fs::read_to_string(&args.input)?;
     let font = Font::parse(&font_content)?;
 
-    let available_glyphs: std::collections::HashSet<u32> = font.glyphs
+    let available_glyphs: std::collections::HashSet<u32> = font
+        .glyphs
         .iter()
         .map(|g| match g.encoding {
             Encoding::Standard(v) => v,
@@ -237,24 +269,26 @@ fn cmd_convert_font(args: Args) -> Result<()> {
             }
         }
     }
-    
+
     filtered_glyphs.sort_unstable();
     filtered_glyphs.dedup();
 
     let total_filtered_glyphs = filtered_glyphs.len();
-    
+
     // Use layout algorithm to organize filtered glyphs into optimal ranges and singles
-    let glyph_layout: GlyphLayout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
-    
+    let glyph_layout: GlyphLayout =
+        layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
+
     // Convert to character ranges for font conversion
     let blocks = into_blocks(&glyph_layout);
 
-    let mut basename = args.input
+    let mut basename = args
+        .input
         .file_stem()
         .and_then(OsStr::to_str)
         .map(normalize_font_name)
         .expect("input filename is valid UTF-8");
-    
+
     // Append suffix if provided
     if let Some(suffix) = &args.suffix {
         basename.push_str(suffix);
@@ -264,17 +298,29 @@ fn cmd_convert_font(args: Args) -> Result<()> {
     let font_output = convert_bdf(&basename, &args.input, blocks)?;
     let atlas_src = rust_font_atlas(&basename, &font_output, &mapping_string)?;
 
-    save_font(basename, &output_path, atlas_src, font_output, args.save_png)?;
+    save_font(
+        basename,
+        &output_path,
+        atlas_src,
+        font_output,
+        args.save_png,
+    )?;
 
     // Print summary of what was generated
     println!("\nFont Generation Summary:");
-    print_glyph_summary(&args.input, Some(&output_path), total_filtered_glyphs, &glyph_layout);
+    print_glyph_summary(
+        &args.input,
+        Some(&output_path),
+        total_filtered_glyphs,
+        &glyph_layout,
+    );
 
     Ok(())
 }
 
 fn into_blocks(glyph_layout: &GlyphLayout) -> Vec<RangeInclusive<char>> {
-    let mut blocks: Vec<RangeInclusive<char>> = glyph_layout.ranges
+    let mut blocks: Vec<RangeInclusive<char>> = glyph_layout
+        .ranges
         .iter()
         .map(|r| {
             let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
@@ -315,7 +361,9 @@ fn save_font(
     // save PNG if requested
     if save_png {
         let png_path = output_path.join(format!("{name}.png"));
-        font_output.save_png(&png_path).map_err(|e| eyre!("Failed to save PNG: {}", e))?;
+        font_output
+            .save_png(&png_path)
+            .map_err(|e| eyre!("Failed to save PNG: {}", e))?;
     }
 
     Ok(())
@@ -433,15 +481,14 @@ mod tests {
     fn test_layout_glyphs_no_gaps() {
         let glyphs = vec![10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 22];
         let layout = layout_glyphs(glyphs, 0, 4);
-        
-        
+
         // Range 10-12 is only 3 chars, below min_range_length=4, so should be singles
         // Range 15-22 is 8 chars, meets min_range_length=4, so should be a range
         assert_eq!(layout.ranges.len(), 1);
         assert_eq!(layout.ranges[0], 15..=22);
         assert_eq!(layout.singles.len(), 3);
         assert!(layout.singles.contains(&10));
-        assert!(layout.singles.contains(&11)); 
+        assert!(layout.singles.contains(&11));
         assert!(layout.singles.contains(&12));
         assert_eq!(layout.skipped_chars_count, 0);
     }
@@ -450,7 +497,7 @@ mod tests {
     fn test_layout_glyphs_with_gaps() {
         let glyphs = vec![10, 12, 14, 16, 18, 20, 22];
         let layout = layout_glyphs(glyphs, 1, 4);
-        
+
         // With gap_threshold=1, should bridge single gaps: 10,12,14,16,18,20,22
         assert_eq!(layout.ranges.len(), 1);
         assert_eq!(layout.ranges[0], 10..=22);
@@ -463,7 +510,7 @@ mod tests {
     fn test_layout_glyphs_min_range_length() {
         let glyphs = vec![10, 11, 12, 20, 21, 30];
         let layout = layout_glyphs(glyphs, 0, 4);
-        
+
         // Ranges 10-12 and 20-21 are too short (< 4), should be singles
         assert_eq!(layout.ranges.len(), 0);
         assert_eq!(layout.singles.len(), 6);
@@ -479,7 +526,7 @@ mod tests {
     fn test_layout_glyphs_mixed_ranges_singles() {
         let glyphs = vec![10, 11, 12, 13, 14, 15, 16, 17, 25, 26, 35];
         let layout = layout_glyphs(glyphs, 0, 4);
-        
+
         // Should have one range 10-17 and singles 25, 26, 35
         assert_eq!(layout.ranges.len(), 1);
         assert_eq!(layout.ranges[0], 10..=17);
@@ -493,7 +540,7 @@ mod tests {
     fn test_layout_glyphs_large_gaps() {
         let glyphs = vec![10, 11, 12, 20, 21, 22];
         let layout = layout_glyphs(glyphs, 5, 3);
-        
+
         // Gap between 12 and 20 is 7, but threshold is 5, so no bridge
         assert_eq!(layout.ranges.len(), 2);
         assert_eq!(layout.ranges[0], 10..=12);
@@ -505,7 +552,7 @@ mod tests {
     fn test_layout_glyphs_bridge_large_gaps() {
         let glyphs = vec![10, 11, 12, 20, 21, 22];
         let layout = layout_glyphs(glyphs, 10, 3);
-        
+
         // Gap between 12 and 20 is 7, threshold is 10, so should bridge
         assert_eq!(layout.ranges.len(), 1);
         assert_eq!(layout.ranges[0], 10..=22);
@@ -518,7 +565,7 @@ mod tests {
     fn test_layout_glyphs_empty() {
         let glyphs = vec![];
         let layout = layout_glyphs(glyphs, 1, 8);
-        
+
         assert_eq!(layout.ranges.len(), 0);
         assert_eq!(layout.singles.len(), 0);
         assert_eq!(layout.skipped_chars_count, 0);
@@ -528,7 +575,7 @@ mod tests {
     fn test_layout_glyphs_single_char() {
         let glyphs = vec![42];
         let layout = layout_glyphs(glyphs, 1, 8);
-        
+
         assert_eq!(layout.ranges.len(), 0);
         assert_eq!(layout.singles.len(), 1);
         assert_eq!(layout.singles[0], 42);
@@ -539,7 +586,7 @@ mod tests {
     fn test_layout_glyphs_deduplication() {
         let glyphs = vec![10, 10, 11, 11, 12, 12, 13, 13];
         let layout = layout_glyphs(glyphs, 0, 4);
-        
+
         // Should deduplicate and create one range
         assert_eq!(layout.ranges.len(), 1);
         assert_eq!(layout.ranges[0], 10..=13);

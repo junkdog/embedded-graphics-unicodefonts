@@ -99,13 +99,14 @@ mod tests {
     #[test]
     fn test_info_flag_conflicts() {
         use clap::Parser;
-        
+
         // Test that --info works alone (would need a real file, so we test parsing logic)
         // Test that --info conflicts with --output and --ranges
         let result = Args::try_parse_from(&["prog", "--info", "--output", "test.rs", "input.bdf"]);
         assert!(result.is_err());
-        
-        let result = Args::try_parse_from(&["prog", "--info", "--range", "0x20..0x7f", "input.bdf"]);
+
+        let result =
+            Args::try_parse_from(&["prog", "--info", "--range", "0x20..0x7f", "input.bdf"]);
         assert!(result.is_err());
     }
 }
