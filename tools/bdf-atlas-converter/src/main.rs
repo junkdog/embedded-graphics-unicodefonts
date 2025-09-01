@@ -196,11 +196,58 @@ fn cmd_convert_font(args: Args) -> Result<()> {
             .ok_or_else(|| eyre!("Invalid input filename"))?
     };
 
-    let mut blocks = DEFAULT_BLOCKS
+    // Scan the font to get available glyphs
+    let font_content = std::fs::read_to_string(&args.input)?;
+    let font = Font::parse(&font_content)?;
+
+    let available_glyphs: std::collections::HashSet<u32> = font.glyphs
+        .iter()
+        .map(|g| match g.encoding {
+            Encoding::Standard(v) => v,
+            Encoding::NonStandard(v) => v,
+            Encoding::Unspecified => panic!("Unspecified encoding: {:?}", g),
+        })
+        .collect();
+
+    // Get requested ranges (default blocks + command line ranges)
+    let requested_ranges: Vec<RangeInclusive<char>> = DEFAULT_BLOCKS
         .iter()
         .map(|b| b.range())
         .chain(args.ranges)
-        .collect::<Vec<RangeInclusive<_>>>();
+        .collect();
+
+    // Filter requested ranges to only include available glyphs
+    let mut filtered_glyphs: Vec<u32> = Vec::new();
+    for range in requested_ranges {
+        for code_point in (*range.start() as u32)..=(*range.end() as u32) {
+            if available_glyphs.contains(&code_point) {
+                filtered_glyphs.push(code_point);
+            }
+        }
+    }
+    
+    filtered_glyphs.sort_unstable();
+    filtered_glyphs.dedup();
+
+    // Use layout algorithm to organize filtered glyphs into optimal ranges and singles
+    let glyph_layout: GlyphLayout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
+    
+    // Convert to character ranges for font conversion
+    let mut blocks: Vec<RangeInclusive<char>> = glyph_layout.ranges
+        .iter()
+        .map(|r| {
+            let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
+            let end_char = char::from_u32(*r.end()).unwrap_or('\u{FFFD}');
+            start_char..=end_char
+        })
+        .collect();
+
+    // Add individual characters as single-character ranges
+    for &glyph_code in &glyph_layout.singles {
+        if let Some(ch) = char::from_u32(glyph_code) {
+            blocks.push(ch..=ch);
+        }
+    }
 
     blocks.sort_unstable_by_key(|b| *b.start());
 
@@ -214,7 +261,7 @@ fn cmd_convert_font(args: Args) -> Result<()> {
     let font_output = convert_bdf(&basename, &args.input, blocks)?;
     let atlas_src = rust_font_atlas(&basename, &font_output, &mapping_string)?;
 
-    save_font(basename, &output_path, atlas_src, font_output)?;
+    save_font(basename, &output_path, atlas_src, font_output, args.save_png)?;
 
     Ok(())
 }
@@ -224,6 +271,7 @@ fn save_font(
     output_path: &PathBuf,
     atlas_src: String,
     font_output: MonoFontOutput,
+    save_png: bool,
 ) -> Result<()> {
     if !output_path.exists() {
         std::fs::create_dir_all(output_path)?;
@@ -235,6 +283,13 @@ fn save_font(
     // save the atlas .rs file
     let atlas_file_path = output_path.join(format!("{name}_atlas.rs"));
     std::fs::write(&atlas_file_path, atlas_src)?;
+
+    // save PNG if requested
+    if save_png {
+        let png_path = output_path.join(format!("{name}.png"));
+        font_output.save_png(&png_path).map_err(|e| eyre!("Failed to save PNG: {}", e))?;
+        println!("Saved PNG: {}", png_path.display());
+    }
 
     Ok(())
 }
@@ -333,4 +388,126 @@ fn normalize_font_name(filename: &str) -> String {
     }
 
     format!("mono_{}", name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_layout_glyphs_no_gaps() {
+        let glyphs = vec![10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 22];
+        let layout = layout_glyphs(glyphs, 0, 4);
+        
+        
+        // Range 10-12 is only 3 chars, below min_range_length=4, so should be singles
+        // Range 15-22 is 8 chars, meets min_range_length=4, so should be a range
+        assert_eq!(layout.ranges.len(), 1);
+        assert_eq!(layout.ranges[0], 15..=22);
+        assert_eq!(layout.singles.len(), 3);
+        assert!(layout.singles.contains(&10));
+        assert!(layout.singles.contains(&11)); 
+        assert!(layout.singles.contains(&12));
+        assert_eq!(layout.skipped_chars_count, 0);
+    }
+
+    #[test]
+    fn test_layout_glyphs_with_gaps() {
+        let glyphs = vec![10, 12, 14, 16, 18, 20, 22];
+        let layout = layout_glyphs(glyphs, 1, 4);
+        
+        // With gap_threshold=1, should bridge single gaps: 10,12,14,16,18,20,22
+        assert_eq!(layout.ranges.len(), 1);
+        assert_eq!(layout.ranges[0], 10..=22);
+        assert_eq!(layout.singles.len(), 0);
+        // Should skip: 11, 13, 15, 17, 19, 21 = 6 chars
+        assert_eq!(layout.skipped_chars_count, 6);
+    }
+
+    #[test]
+    fn test_layout_glyphs_min_range_length() {
+        let glyphs = vec![10, 11, 12, 20, 21, 30];
+        let layout = layout_glyphs(glyphs, 0, 4);
+        
+        // Ranges 10-12 and 20-21 are too short (< 4), should be singles
+        assert_eq!(layout.ranges.len(), 0);
+        assert_eq!(layout.singles.len(), 6);
+        assert!(layout.singles.contains(&10));
+        assert!(layout.singles.contains(&11));
+        assert!(layout.singles.contains(&12));
+        assert!(layout.singles.contains(&20));
+        assert!(layout.singles.contains(&21));
+        assert!(layout.singles.contains(&30));
+    }
+
+    #[test]
+    fn test_layout_glyphs_mixed_ranges_singles() {
+        let glyphs = vec![10, 11, 12, 13, 14, 15, 16, 17, 25, 26, 35];
+        let layout = layout_glyphs(glyphs, 0, 4);
+        
+        // Should have one range 10-17 and singles 25, 26, 35
+        assert_eq!(layout.ranges.len(), 1);
+        assert_eq!(layout.ranges[0], 10..=17);
+        assert_eq!(layout.singles.len(), 3);
+        assert!(layout.singles.contains(&25));
+        assert!(layout.singles.contains(&26));
+        assert!(layout.singles.contains(&35));
+    }
+
+    #[test]
+    fn test_layout_glyphs_large_gaps() {
+        let glyphs = vec![10, 11, 12, 20, 21, 22];
+        let layout = layout_glyphs(glyphs, 5, 3);
+        
+        // Gap between 12 and 20 is 7, but threshold is 5, so no bridge
+        assert_eq!(layout.ranges.len(), 2);
+        assert_eq!(layout.ranges[0], 10..=12);
+        assert_eq!(layout.ranges[1], 20..=22);
+        assert_eq!(layout.skipped_chars_count, 0);
+    }
+
+    #[test]
+    fn test_layout_glyphs_bridge_large_gaps() {
+        let glyphs = vec![10, 11, 12, 20, 21, 22];
+        let layout = layout_glyphs(glyphs, 10, 3);
+        
+        // Gap between 12 and 20 is 7, threshold is 10, so should bridge
+        assert_eq!(layout.ranges.len(), 1);
+        assert_eq!(layout.ranges[0], 10..=22);
+        assert_eq!(layout.singles.len(), 0);
+        // Should skip chars: 13, 14, 15, 16, 17, 18, 19 = 7 chars
+        assert_eq!(layout.skipped_chars_count, 7);
+    }
+
+    #[test]
+    fn test_layout_glyphs_empty() {
+        let glyphs = vec![];
+        let layout = layout_glyphs(glyphs, 1, 8);
+        
+        assert_eq!(layout.ranges.len(), 0);
+        assert_eq!(layout.singles.len(), 0);
+        assert_eq!(layout.skipped_chars_count, 0);
+    }
+
+    #[test]
+    fn test_layout_glyphs_single_char() {
+        let glyphs = vec![42];
+        let layout = layout_glyphs(glyphs, 1, 8);
+        
+        assert_eq!(layout.ranges.len(), 0);
+        assert_eq!(layout.singles.len(), 1);
+        assert_eq!(layout.singles[0], 42);
+        assert_eq!(layout.skipped_chars_count, 0);
+    }
+
+    #[test]
+    fn test_layout_glyphs_deduplication() {
+        let glyphs = vec![10, 10, 11, 11, 12, 12, 13, 13];
+        let layout = layout_glyphs(glyphs, 0, 4);
+        
+        // Should deduplicate and create one range
+        assert_eq!(layout.ranges.len(), 1);
+        assert_eq!(layout.ranges[0], 10..=13);
+        assert_eq!(layout.singles.len(), 0);
+    }
 }

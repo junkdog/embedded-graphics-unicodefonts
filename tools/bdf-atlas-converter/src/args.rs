@@ -28,6 +28,10 @@ pub struct Args {
     /// Minimum consecutive characters needed to form a range (default: 8)
     #[arg(long, default_value = "8")]
     pub min_range_length: usize,
+
+    /// Save a PNG image of the generated font atlas
+    #[arg(long)]
+    pub save_png: bool,
 }
 
 fn parse_unicode_range(s: &str) -> std::result::Result<RangeInclusive<char>, String> {
