@@ -63,14 +63,11 @@ pub fn layout_glyphs(
 }
 
 pub fn into_blocks(glyph_layout: &GlyphLayout) -> Vec<RangeInclusive<char>> {
-    let blocks = glyph_layout
-        .ranges
-        .iter()
-        .map(|r| {
-            let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
-            let end_char = char::from_u32(*r.end()).unwrap_or('\u{FFFD}');
-            start_char..=end_char
-        });
+    let blocks = glyph_layout.ranges.iter().map(|r| {
+        let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
+        let end_char = char::from_u32(*r.end()).unwrap_or('\u{FFFD}');
+        start_char..=end_char
+    });
 
     let singles = glyph_layout
         .singles

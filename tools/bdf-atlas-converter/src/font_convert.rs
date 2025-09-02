@@ -80,7 +80,8 @@ fn build_filtered_glyphs(font: &Font, additional_ranges: &[RangeInclusive<char>]
         .collect();
 
     // Filter requested ranges to only include available glyphs
-    let mut filtered_glyphs: Vec<u32> =requested_ranges.into_iter()
+    let mut filtered_glyphs: Vec<u32> = requested_ranges
+        .into_iter()
         .flat_map(|range| range.map(u32::from))
         .filter(|code_point| available_glyphs.contains(code_point))
         .collect();

@@ -7,8 +7,30 @@ pub fn cmd_font_info(args: Args) -> Result<()> {
     let font = load_font(&args.input)?;
 
     let mut glyphs = extract_glyphs_from_font(&font);
-    glyphs.sort_unstable();
 
+    // Check if glyphs are in sorted order BEFORE sorting
+    let mut is_sorted = true;
+    let mut last_ordered_code = None;
+    let mut first_out_of_order_code = None;
+
+    for window in glyphs.windows(2) {
+        if window[0] > window[1] {
+            is_sorted = false;
+            last_ordered_code = Some(window[0]);
+            first_out_of_order_code = Some(window[1]);
+            break;
+        }
+    }
+
+    println!("Original glyphs are sorted: {}", is_sorted);
+    if let (Some(last), Some(first)) = (last_ordered_code, first_out_of_order_code) {
+        println!(
+            "Last ordered code point: U+{:04X}, First out-of-order: U+{:04X}",
+            last, first
+        );
+    }
+
+    glyphs.sort_unstable();
     let total_glyphs = glyphs.len();
 
     // join glyphs into ranges
