@@ -65,49 +65,9 @@ impl NamedUnicodeBlock {
 
 
 impl FontAtlas {
-    /// Creates a font atlas from an iterator of character ranges.
-    ///
-    /// Ranges with multiple characters become Unicode blocks, while single-character
-    /// ranges are stored as individual symbols.
-    ///
-    /// # Panics when debug assertions are enabled if:
-    /// - If the first range doesn't start with ASCII space (U+0020)
-    /// - If ranges are not sorted in ascending order
-    /// - If individual symbols are not sorted in ascending order
-    fn from_ranges(ranges: impl Iterator<Item=ops::RangeInclusive<char>>) -> Self {
-        let (blocks, singles): (Vec<_>, Vec<_>) = ranges
-            .partition(|range| range.start() != range.end());
-
-        debug_assert!(
-            *blocks[0].start() == '\u{0020}',
-            "Invalid FontAtlas: must start with ASCII block"
-        );
-
-        debug_assert!(
-            blocks.windows(2).all(|w| w[0].start() < w[1].start()),
-            "Invalid FontAtlas: ranges must be sorted"
-        );
-
-        debug_assert!(
-            singles.windows(2).all(|w| w[0].start() < w[1].start()),
-            "Invalid FontAtlas: individual symbols must be sorted"
-        );
-
-        Self {
-            blocks: into_unicode_blocks(blocks.into_iter()),
-            other_symbols: singles.into_iter().map(|r| *r.start()).collect(),
-        }
-    }
-
     /// Returns the total number of glyphs in the atlas.
     pub fn glyph_count(&self) -> usize {
-        let block_len: usize = self
-            .blocks
-            .last()
-            .map(|b| b.len() + b.base_offset as usize)
-            .unwrap_or(0);
-
-        block_len + self.other_symbols.len()
+        self.glyph_count_in_blocks() + self.other_symbols.len()
     }
 
     /// Returns an iterator over all characters in the atlas.
@@ -151,19 +111,52 @@ impl FontAtlas {
         Box::leak(Box::new(self))
     }
 
-    fn index_of_other_symbol(&self, symbol: char) -> Option<usize> {
-        match self.other_symbols.binary_search(&symbol) {
-            Ok(idx) => {
-                let other_symbols_offset: usize = self
-                    .blocks
-                    .last()
-                    .map(|b| b.base_offset as usize + b.len())
-                    .unwrap_or(0);
+    /// Creates a font atlas from an iterator of character ranges.
+    ///
+    /// Ranges with multiple characters become Unicode blocks, while single-character
+    /// ranges are stored as individual symbols.
+    ///
+    /// # Panics when debug assertions are enabled if:
+    /// - If the first range doesn't start with ASCII space (U+0020)
+    /// - If ranges are not sorted in ascending order
+    /// - If individual symbols are not sorted in ascending order
+    fn from_ranges(ranges: impl Iterator<Item=ops::RangeInclusive<char>>) -> Self {
+        let (blocks, singles): (Vec<_>, Vec<_>) = ranges
+            .partition(|range| range.start() != range.end());
 
-                Some(other_symbols_offset + idx)
-            }
-            Err(_) => None,
+        debug_assert!(
+            *blocks[0].start() == '\u{0020}',
+            "Invalid FontAtlas: must start with ASCII block"
+        );
+
+        debug_assert!(
+            blocks.windows(2).all(|w| w[0].start() < w[1].start()),
+            "Invalid FontAtlas: ranges must be sorted"
+        );
+
+        debug_assert!(
+            singles.windows(2).all(|w| w[0].start() < w[1].start()),
+            "Invalid FontAtlas: individual symbols must be sorted"
+        );
+
+        Self {
+            blocks: into_unicode_blocks(blocks.into_iter()),
+            other_symbols: singles.into_iter().map(|r| *r.start()).collect(),
         }
+    }
+
+    pub fn glyph_count_in_blocks(&self) -> usize {
+        self.blocks
+            .last()
+            .map(|b| b.len() + b.base_offset as usize)
+            .unwrap_or(0)
+    }
+
+    fn index_of_other_symbol(&self, symbol: char) -> Option<usize> {
+        self.other_symbols
+            .binary_search(&symbol)
+            .map(|idx| self.glyph_count_in_blocks() + idx)
+            .ok()
     }
 }
 
@@ -188,9 +181,6 @@ struct UnicodeBlock {
 impl UnicodeBlock {
     fn contains(&self, symbol: char) -> bool {
         let c = symbol as u32;
-
-        // since blocks are stored in ascending order, we can bail early by
-        // checking the upper bound first
         c <= *self.range.end() as u32 && c >= *self.range.start() as u32
     }
 
@@ -227,6 +217,7 @@ fn into_unicode_blocks(blocks: impl Iterator<Item=ops::RangeInclusive<char>>) ->
 
         base_offset += block_len
     }
+
     result
 }
 
