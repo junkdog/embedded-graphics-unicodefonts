@@ -11,6 +11,8 @@ cd "$SCRIPT_DIR"
 # Path to the bdf-atlas-converter binary
 ATLAS_CONVERTER="../../target/release/bdf-atlas-converter"
 
+BUILD_OPTIMIZED_FONTS=0
+
 # Check if binary exists, if not build it
 if [ ! -f "$ATLAS_CONVERTER" ]; then
     echo "Binary not found at $ATLAS_CONVERTER, building with cargo build --release..."
@@ -30,15 +32,17 @@ mkdir -p ../../src/raw
 
 ### Build atlas-compatible fonts ###
 # build fonts with a subset of glyphs, suitable for most ratatui use cases
-for font in misc-misc/*.bdf; do
-    if [[ ! "$font" =~ (ja|ko|nil2|k14) ]]; then
-        $ATLAS_CONVERTER "$font" \
-            --save-png \
-            --suffix="_optimized" \
-            --gap-threshold=2 \
-            --output ../../src
-    fi
-done
+if [ "$BUILD_OPTIMIZED_FONTS" -ne 0 ]; then
+    for font in misc-misc/*.bdf; do
+        if [[ ! "$font" =~ (ja|ko|nil2|k14) ]]; then
+            $ATLAS_CONVERTER "$font" \
+                --save-png \
+                --suffix="_optimized" \
+                --gap-threshold=2 \
+                --output ../../src
+        fi
+    done
+fi
 
 # rebuild existing fonts for faster lookups. retains all glyphs.
 for font in misc-misc/*.bdf; do
