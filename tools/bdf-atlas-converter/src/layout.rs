@@ -8,21 +8,10 @@ pub struct GlyphLayout {
 }
 
 pub fn layout_glyphs(
-    mut glyphs: Vec<u32>,
+    glyphs: Vec<u32>,
     max_gap_threshold: u32,
     min_range_length: usize,
 ) -> GlyphLayout {
-    if glyphs.is_empty() {
-        return GlyphLayout {
-            ranges: Vec::new(),
-            singles: Vec::new(),
-            skipped_chars_count: 0,
-        };
-    }
-
-    glyphs.sort_unstable();
-    glyphs.dedup();
-
     let mut ranges = Vec::new();
     let mut singles = Vec::new();
     let mut skipped_chars_count = 0;
@@ -74,25 +63,23 @@ pub fn layout_glyphs(
 }
 
 pub fn into_blocks(glyph_layout: &GlyphLayout) -> Vec<RangeInclusive<char>> {
-    let mut blocks: Vec<RangeInclusive<char>> = glyph_layout
+    let blocks = glyph_layout
         .ranges
         .iter()
         .map(|r| {
             let start_char = char::from_u32(*r.start()).unwrap_or('\u{FFFD}');
             let end_char = char::from_u32(*r.end()).unwrap_or('\u{FFFD}');
             start_char..=end_char
-        })
-        .collect();
+        });
 
-    // Add individual characters as single-character ranges
-    for &glyph_code in &glyph_layout.singles {
-        if let Some(ch) = char::from_u32(glyph_code) {
-            blocks.push(ch..=ch);
-        }
-    }
+    let singles = glyph_layout
+        .singles
+        .iter()
+        .copied()
+        .flat_map(char::from_u32)
+        .map(|c| c..=c);
 
-    blocks.sort_unstable_by_key(|b| *b.start());
-    blocks
+    blocks.chain(singles).collect()
 }
 
 #[cfg(test)]

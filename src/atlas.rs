@@ -13,22 +13,6 @@ impl GlyphMapping for FontAtlas {
     }
 }
 
-/// Named Unicode blocks with predefined ranges for font generation
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NamedUnicodeBlock {
-    Ascii,            // 0x0020..=0x007F
-    Latin1,           // 0x00A0..=0x00FF
-    BlockElements,    // 0x2580..=0x259F
-    BoxDrawing,       // 0x2500..=0x257F
-    Miscellaneous,    // 0x2600..=0x26FF
-    BraillePatterns,  // 0x2800..=0x28FF
-    CurrencySymbols,  // 0x20A0..=0x20CF
-    Dingbats,         // 0x2700..=0x27BF
-    SymbolsAndArrows, // 0x2B00..=0x2BFF
-    TransportAndMap,  // 0x1F680..=0x1F6FF
-    Pictographs,      // 0x1F300..=0x1F5FF
-}
-
 /// Font atlas containing Unicode blocks and additional symbols for efficient glyph lookup.
 ///
 /// The atlas stores characters in two categories:
@@ -42,25 +26,6 @@ pub enum NamedUnicodeBlock {
 pub struct FontAtlas {
     blocks: Vec<UnicodeBlock>,
     other_symbols: Vec<char>, // sorted
-}
-
-impl NamedUnicodeBlock {
-    /// Returns the Unicode range for this block
-    pub const fn range(&self) -> ops::RangeInclusive<char> {
-        match self {
-            Self::Ascii            => '\u{0020}'..='\u{007F}',
-            Self::Latin1           => '\u{00A0}'..='\u{00FF}',
-            Self::BoxDrawing       => '\u{2500}'..='\u{257F}',
-            Self::BlockElements    => '\u{2580}'..='\u{259F}',
-            Self::Miscellaneous    => '\u{2600}'..='\u{26FF}',
-            Self::BraillePatterns  => '\u{2800}'..='\u{28FF}',
-            Self::CurrencySymbols  => '\u{20A0}'..='\u{20CF}',
-            Self::Dingbats         => '\u{2700}'..='\u{27BF}',
-            Self::SymbolsAndArrows => '\u{2B00}'..='\u{2BFF}',
-            Self::Pictographs      => '\u{1F300}'..='\u{1F5FF}',
-            Self::TransportAndMap  => '\u{1F680}'..='\u{1F6FF}',
-        }
-    }
 }
 
 
@@ -203,6 +168,42 @@ impl UnicodeBlock {
         self.range.clone()
     }
 }
+
+/// Named Unicode blocks with predefined ranges for font generation
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NamedUnicodeBlock {
+    Ascii,            // 0x0020..=0x007F
+    Latin1,           // 0x00A0..=0x00FF
+    BlockElements,    // 0x2580..=0x259F
+    BoxDrawing,       // 0x2500..=0x257F
+    Miscellaneous,    // 0x2600..=0x26FF
+    BraillePatterns,  // 0x2800..=0x28FF
+    CurrencySymbols,  // 0x20A0..=0x20CF
+    Dingbats,         // 0x2700..=0x27BF
+    SymbolsAndArrows, // 0x2B00..=0x2BFF
+    TransportAndMap,  // 0x1F680..=0x1F6FF
+    Pictographs,      // 0x1F300..=0x1F5FF
+}
+
+impl NamedUnicodeBlock {
+    /// Returns the Unicode range for this block
+    pub const fn range(&self) -> ops::RangeInclusive<char> {
+        match self {
+            Self::Ascii            => '\u{0020}'..='\u{007F}',
+            Self::Latin1           => '\u{00A0}'..='\u{00FF}',
+            Self::BoxDrawing       => '\u{2500}'..='\u{257F}',
+            Self::BlockElements    => '\u{2580}'..='\u{259F}',
+            Self::Miscellaneous    => '\u{2600}'..='\u{26FF}',
+            Self::BraillePatterns  => '\u{2800}'..='\u{28FF}',
+            Self::CurrencySymbols  => '\u{20A0}'..='\u{20CF}',
+            Self::Dingbats         => '\u{2700}'..='\u{27BF}',
+            Self::SymbolsAndArrows => '\u{2B00}'..='\u{2BFF}',
+            Self::Pictographs      => '\u{1F300}'..='\u{1F5FF}',
+            Self::TransportAndMap  => '\u{1F680}'..='\u{1F6FF}',
+        }
+    }
+}
+
 
 fn into_unicode_blocks(blocks: impl Iterator<Item=ops::RangeInclusive<char>>) -> Vec<UnicodeBlock> {
     let mut base_offset = 0u32;

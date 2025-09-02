@@ -75,19 +75,15 @@ fn build_filtered_glyphs(font: &Font, additional_ranges: &[RangeInclusive<char>]
     // Get requested ranges (default blocks + command line ranges)
     let requested_ranges: Vec<RangeInclusive<char>> = DEFAULT_BLOCKS
         .iter()
-        .map(|b| b.range())
+        .map(NamedUnicodeBlock::range)
         .chain(additional_ranges.iter().cloned())
         .collect();
 
     // Filter requested ranges to only include available glyphs
-    let mut filtered_glyphs: Vec<u32> = Vec::new();
-    for range in requested_ranges {
-        for code_point in (*range.start() as u32)..=(*range.end() as u32) {
-            if available_glyphs.contains(&code_point) {
-                filtered_glyphs.push(code_point);
-            }
-        }
-    }
+    let mut filtered_glyphs: Vec<u32> =requested_ranges.into_iter()
+        .flat_map(|range| range.map(u32::from))
+        .filter(|code_point| available_glyphs.contains(code_point))
+        .collect();
 
     filtered_glyphs.sort_unstable();
     filtered_glyphs.dedup();
