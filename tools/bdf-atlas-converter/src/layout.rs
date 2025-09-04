@@ -76,7 +76,8 @@ pub fn into_blocks(glyph_layout: &GlyphLayout) -> Vec<RangeInclusive<char>> {
         .flat_map(char::from_u32)
         .map(|c| c..=c);
 
-    blocks.chain(singles).collect()
+    // blocks.chain(singles).collect()
+    blocks.collect()
 }
 
 #[cfg(test)]

@@ -153,11 +153,13 @@ fn convert_bdf(
 ) -> Result<MonoFontOutput> {
     let name = basename.to_ascii_uppercase();
     let mut converter = FontConverter::with_file(input, &name);
+
     for block in blocks {
         converter = converter.glyphs(block);
     }
 
     converter
+        .replacement_character(' ')
         .missing_glyph_substitute(' ')
         .convert_mono_font()
         .map_err(|e| eyre!("{}", e))
@@ -167,9 +169,14 @@ fn generate_ranges_string(blocks: &[RangeInclusive<char>]) -> String {
     let mut result = String::new();
 
     for range in blocks {
-        result.push('\0'); // Range start marker
-        result.push(*range.start()); // Range start character
-        result.push(*range.end()); // Range end character
+        // blocks are sorted and non-overlapping, with single-letter ranges last
+        if range.start() < range.end() {
+            result.push('\0'); // Range start marker
+            result.push(*range.start()); // Range start character
+            result.push(*range.end()); // Range end character
+        } else {
+            result.push(*range.start());
+        }
     }
 
     result
