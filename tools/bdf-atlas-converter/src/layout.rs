@@ -1,5 +1,5 @@
-use std::ops::RangeInclusive;
 use crate::font_convert::range_len;
+use std::ops::RangeInclusive;
 
 #[derive(Debug)]
 pub enum GlyphLayout {

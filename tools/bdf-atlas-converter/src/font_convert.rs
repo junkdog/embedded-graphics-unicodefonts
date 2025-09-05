@@ -81,7 +81,7 @@ fn build_filtered_glyphs(font: &Font, additional_ranges: &[RangeInclusive<char>]
     // Filter requested ranges to only include available glyphs
     let mut filtered_glyphs: Vec<u32> = requested_ranges
         .into_iter()
-        .flat_map(|range| range.map(u32::from))
+        .flat_map(|range| range.filter(|c| !c.is_ascii_control()).map(u32::from))
         .filter(|code_point| available_glyphs.contains(code_point))
         .collect();
 
@@ -161,6 +161,7 @@ fn convert_bdf(basename: &str, input: &Path, blocks: &[GlyphLayout]) -> Result<M
     for block in blocks {
         let glyphs = match block {
             GlyphLayout::Range { span, .. } => span.clone(),
+            GlyphLayout::Single('\u{0000}') => continue,
             GlyphLayout::Single(c) => *c..=*c,
         };
 
@@ -184,7 +185,6 @@ fn generate_ranges_string(blocks: &[GlyphLayout]) -> String {
                 result.push(*span.start()); // Range start character
                 result.push(*span.end()); // Range end character
             }
-            GlyphLayout::Single('\0') => result.push('⬚'),
             GlyphLayout::Single(c) => result.push(*c),
         }
     }
@@ -285,15 +285,15 @@ mod tests {
         // Basic fonts
         assert_eq!(normalize_font_name("6x13"), "mono_6x13");
         assert_eq!(normalize_font_name("8x16"), "mono_8x16");
-        
+
         // Bold/italic variants
         assert_eq!(normalize_font_name("6x13B"), "mono_6x13_bold");
         assert_eq!(normalize_font_name("7x14O"), "mono_7x14_italic");
-        
+
         // Localized fonts
         assert_eq!(normalize_font_name("12x13ja"), "mono_12x13_ja");
         assert_eq!(normalize_font_name("18x18ko"), "mono_18x18_ko");
-        
+
         // Already normalized (shouldn't double-underscore)
         assert_eq!(normalize_font_name("12x13_ja"), "mono_12x13_ja");
     }
