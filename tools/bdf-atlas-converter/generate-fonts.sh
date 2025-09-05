@@ -51,7 +51,7 @@ fi
 
 # rebuild existing fonts for faster lookups. retains all glyphs.
 for font in misc-misc/*.bdf; do
-    if [[ ! "$font" =~ (k14) ]]; then # has almost no glyphs
+    if [[ ! "$font" =~ (k14|nil) ]]; then # has almost no glyphs
         echo "Processing font: $font"
         $ATLAS_CONVERTER "$font" \
             --save-png \

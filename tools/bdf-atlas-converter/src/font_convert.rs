@@ -184,6 +184,7 @@ fn generate_ranges_string(blocks: &[GlyphLayout]) -> String {
                 result.push(*span.start()); // Range start character
                 result.push(*span.end()); // Range end character
             }
+            GlyphLayout::Single('\0') => result.push('⬚'),
             GlyphLayout::Single(c) => result.push(*c),
         }
     }
@@ -248,6 +249,7 @@ pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'stat
 fn normalize_font_name(filename: &str) -> String {
     let mut name = filename.to_string();
 
+    // Handle bold/italic suffixes first
     if name.ends_with('B') {
         name.pop();
         name.push_str("_bold");
@@ -256,10 +258,43 @@ fn normalize_font_name(filename: &str) -> String {
         name.push_str("_italic");
     }
 
+    // Add underscore before known locale suffixes: ja, ko
+    // "12x13ja" -> "12x13_ja", "18x18ko" -> "18x18_ko"
+    // Only replace if not already preceded by underscore
+    if name.contains("ja") && !name.contains("_ja") {
+        name = name.replace("ja", "_ja");
+    }
+    if name.contains("ko") && !name.contains("_ko") {
+        name = name.replace("ko", "_ko");
+    }
+
     format!("mono_{}", name)
 }
 
 /// Calculates the length of a character range.
 pub fn range_len(range: &RangeInclusive<char>) -> usize {
     *range.end() as usize - *range.start() as usize + 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_font_name() {
+        // Basic fonts
+        assert_eq!(normalize_font_name("6x13"), "mono_6x13");
+        assert_eq!(normalize_font_name("8x16"), "mono_8x16");
+        
+        // Bold/italic variants
+        assert_eq!(normalize_font_name("6x13B"), "mono_6x13_bold");
+        assert_eq!(normalize_font_name("7x14O"), "mono_7x14_italic");
+        
+        // Localized fonts
+        assert_eq!(normalize_font_name("12x13ja"), "mono_12x13_ja");
+        assert_eq!(normalize_font_name("18x18ko"), "mono_18x18_ko");
+        
+        // Already normalized (shouldn't double-underscore)
+        assert_eq!(normalize_font_name("12x13_ja"), "mono_12x13_ja");
+    }
 }
