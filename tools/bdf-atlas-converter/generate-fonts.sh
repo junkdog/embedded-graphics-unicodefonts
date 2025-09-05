@@ -11,7 +11,11 @@ cd "$SCRIPT_DIR"
 # Path to the bdf-atlas-converter binary
 ATLAS_CONVERTER="../../target/release/bdf-atlas-converter"
 
-BUILD_OPTIMIZED_FONTS=0
+# <describe>
+BUILD_OPTIMIZED_FONTS=(
+    "misc-misc/6x10.bdf"
+    "misc-misc/7x12.bdf"
+)
 
 # Check if binary exists, if not build it
 if [ ! -f "$ATLAS_CONVERTER" ]; then
@@ -58,11 +62,11 @@ done
 
 # Bulk move all .data files to raw/ directory
 echo "Moving .data files to raw/ directory..."
-mv ../../src/*.data ../../src/raw/ 2>/dev/null || true
+mv ../../src/*.data ../../src/raw/
 
 # Bulk move all .png files to assets/ directory
 echo "Moving .png files to assets/ directory..."
-mv ../../src/*.png ../../assets/ 2>/dev/null || true
+mv ../../src/*.png ../../assets/
 
 # Update all .rs files to use raw/ prefix for includes that don't already have it
 echo "Updating .rs files to use raw/ prefix..."

@@ -38,7 +38,7 @@ pub struct Args {
     pub suffix: Option<String>,
 }
 
-fn parse_unicode_range(s: &str) -> std::result::Result<RangeInclusive<char>, String> {
+fn parse_unicode_range(s: &str) -> Result<RangeInclusive<char>, String> {
     if let Some((start_str, end_str)) = s.split_once("..") {
         let start_code = parse_hex(start_str.trim())
             .map_err(|e| format!("Invalid start value '{}': {}", start_str, e))?;
@@ -60,29 +60,26 @@ fn parse_unicode_range(s: &str) -> std::result::Result<RangeInclusive<char>, Str
         Ok(start_char..=end_char)
     } else {
         Err(format!(
-            "Invalid range format '{}'. Expected format: 0x20..0x7f",
-            s
+            "Invalid range format '{s}'. Expected format: 0x20..0x7f"
         ))
     }
 }
 
-fn parse_hex(s: &str) -> std::result::Result<u32, String> {
+fn parse_hex(s: &str) -> Result<u32, String> {
     s.strip_prefix("0x")
         .ok_or_else(|| format!("Expected hexadecimal format (0x...), got: {}", s))
         .map(|hex_str| u32::from_str_radix(hex_str, 16))?
         .map_err(|_| format!("Invalid hexadecimal number: {}", s))
 }
 
-fn validate_file_exists(s: &str) -> std::result::Result<PathBuf, String> {
+fn validate_file_exists(s: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(s);
-    if !path.exists() {
-        return Err(format!("Input file does not exist: {}", s));
-    }
-    if !path.is_file() {
-        return Err(format!("Path is not a file: {}", s));
-    }
 
-    Ok(path)
+    match () {
+        _ if !path.exists() => Err(format!("Input file does not exist: {s}")),
+        _ if !path.is_file() => Err(format!("Path is not a file: {s}")),
+        _ => Ok(path),
+    }
 }
 
 #[cfg(test)]

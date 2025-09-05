@@ -110,9 +110,18 @@ fn generate_font_files(
     input: &Path,
     blocks: &[GlyphLayout],
 ) -> Result<(MonoFontOutput, String)> {
+    let min_range_length = blocks
+        .iter()
+        .filter_map(|b| match b {
+            GlyphLayout::Range { span, .. } => Some(range_len(span)),
+            GlyphLayout::Single(_) => None,
+        })
+        .min()
+        .unwrap_or(0);
+
     let mapping_string = generate_ranges_string(blocks);
     let font_output = convert_bdf(basename, input, blocks)?;
-    let atlas_src = rust_font_atlas(basename, &font_output, &mapping_string)?;
+    let atlas_src = rust_font_atlas(basename, &font_output, &mapping_string, min_range_length)?;
 
     Ok((font_output, atlas_src))
 }
@@ -146,11 +155,7 @@ fn save_font(
     Ok(())
 }
 
-fn convert_bdf(
-    basename: &str,
-    input: &Path,
-    blocks: &[GlyphLayout],
-) -> Result<MonoFontOutput> {
+fn convert_bdf(basename: &str, input: &Path, blocks: &[GlyphLayout]) -> Result<MonoFontOutput> {
     let name = basename.to_ascii_uppercase();
     let mut converter = FontConverter::with_file(input, &name);
 
@@ -179,7 +184,6 @@ fn generate_ranges_string(blocks: &[GlyphLayout]) -> String {
                 result.push('\0'); // Range start marker
                 result.push(*span.start()); // Range start character
                 result.push(*span.end()); // Range end character
-
             }
             GlyphLayout::Single(c) => result.push(*c),
         }
@@ -192,6 +196,7 @@ fn rust_font_atlas(
     font_basename: &str,
     font_output: &MonoFontOutput,
     mapping_string: &str,
+    min_range_length: usize,
 ) -> Result<String> {
     let MonoFont {
         character_size:
@@ -219,7 +224,7 @@ fn rust_font_atlas(
 
 /// **Danger**: leaking [`FontAtlas<'static>`] for the lifetime of the program
 pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {{
-    let atlas = FontAtlas::from({mapping_string:?})
+    let atlas = FontAtlas::from_partitioned_ranges({min_range_length}, {mapping_string:?})
         .leak();
 
     ::embedded_graphics::mono_font::MonoFont {{
@@ -253,4 +258,9 @@ fn normalize_font_name(filename: &str) -> String {
     }
 
     format!("mono_{}", name)
+}
+
+/// Calculates the length of a character range.
+pub fn range_len(range: &RangeInclusive<char>) -> usize {
+    *range.end() as usize - *range.start() as usize + 1
 }

@@ -1,15 +1,19 @@
 use std::ops::RangeInclusive;
+use crate::font_convert::range_len;
 
 #[derive(Debug)]
 pub enum GlyphLayout {
-    Range { span: RangeInclusive<char>, skipped: u32 },
+    Range {
+        span: RangeInclusive<char>,
+        skipped: u32,
+    },
     Single(char),
 }
 
 impl GlyphLayout {
     pub fn glyph_count(&self) -> u32 {
         match self {
-            GlyphLayout::Range { span, .. } => *span.end() as u32 - *span.start() as u32 + 1,
+            GlyphLayout::Range { span, .. } => range_len(span) as _,
             GlyphLayout::Single(_) => 1,
         }
     }
@@ -21,11 +25,11 @@ pub fn layout_glyphs(
     min_range_length: usize,
 ) -> Vec<GlyphLayout> {
     let mut layout = Vec::new();
-    
+
     if glyphs.is_empty() {
         return layout;
     }
-    
+
     let mut skipped_chars_count = 0;
     let mut range_start = glyphs[0];
     let mut range_end = glyphs[0];
@@ -100,12 +104,10 @@ mod tests {
     }
 
     fn extract_skipped_chars_count(layout: &[GlyphLayout]) -> u32 {
-        layout
-            .iter()
-            .fold(0, |acc, g| match g {
-                GlyphLayout::Range { skipped, .. } => acc + *skipped,
-                _ => acc,
-            })
+        layout.iter().fold(0, |acc, g| match g {
+            GlyphLayout::Range { skipped, .. } => acc + *skipped,
+            _ => acc,
+        })
     }
 
     #[test]
@@ -118,7 +120,7 @@ mod tests {
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
         let skipped_count = extract_skipped_chars_count(&layout);
-        
+
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0], 15..=22);
         assert_eq!(singles.len(), 3);
@@ -137,7 +139,7 @@ mod tests {
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
         let skipped_count = extract_skipped_chars_count(&layout);
-        
+
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0], 10..=22);
         assert_eq!(singles.len(), 0);
@@ -153,7 +155,7 @@ mod tests {
         // Ranges 10-12 and 20-21 are too short (< 4), should be singles
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
-        
+
         assert_eq!(ranges.len(), 0);
         assert_eq!(singles.len(), 6);
         assert!(singles.contains(&10));
@@ -172,7 +174,7 @@ mod tests {
         // Should have one range 10-17 and singles 25, 26, 35
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
-        
+
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0], 10..=17);
         assert_eq!(singles.len(), 3);
@@ -189,7 +191,7 @@ mod tests {
         // Gap between 12 and 20 is 7, but threshold is 5, so no bridge
         let ranges = extract_ranges(&layout);
         let skipped_count = extract_skipped_chars_count(&layout);
-        
+
         assert_eq!(ranges.len(), 2);
         assert_eq!(ranges[0], 10..=12);
         assert_eq!(ranges[1], 20..=22);
@@ -205,7 +207,7 @@ mod tests {
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
         let skipped_count = extract_skipped_chars_count(&layout);
-        
+
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0], 10..=22);
         assert_eq!(singles.len(), 0);
@@ -221,7 +223,7 @@ mod tests {
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
         let skipped_count = extract_skipped_chars_count(&layout);
-        
+
         assert_eq!(ranges.len(), 0);
         assert_eq!(singles.len(), 0);
         assert_eq!(skipped_count, 0);
@@ -235,7 +237,7 @@ mod tests {
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
         let skipped_count = extract_skipped_chars_count(&layout);
-        
+
         assert_eq!(ranges.len(), 0);
         assert_eq!(singles.len(), 1);
         assert_eq!(singles[0], 42);
@@ -250,7 +252,7 @@ mod tests {
         // Should deduplicate and create one range
         let ranges = extract_ranges(&layout);
         let singles = extract_singles(&layout);
-        
+
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0], 10..=13);
         assert_eq!(singles.len(), 0);

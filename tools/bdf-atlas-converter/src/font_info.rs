@@ -142,12 +142,10 @@ pub fn print_glyph_summary(
     total_glyphs: usize,
     glyph_layout: &[GlyphLayout],
 ) {
-    let skipped_chars_count = glyph_layout
-        .iter()
-        .fold(0, |acc, g| match g {
-            GlyphLayout::Range { skipped, .. } => acc + *skipped,
-            _ => acc,
-        });
+    let skipped_chars_count = glyph_layout.iter().fold(0, |acc, g| match g {
+        GlyphLayout::Range { skipped, .. } => acc + *skipped,
+        _ => acc,
+    });
 
     let ranges: Vec<_> = glyph_layout
         .iter()
