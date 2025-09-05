@@ -30,7 +30,6 @@ pub fn cmd_convert_font(args: Args) -> Result<()> {
     let total_filtered_glyphs = filtered_glyphs.len();
 
     let glyph_layout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
-    // let blocks = into_blocks(&glyph_layout);
     let basename = create_font_basename(&args.input, args.suffix.as_deref())?;
 
     let (font_output, atlas_src) = generate_font_files(&basename, &args.input, &glyph_layout)?;
@@ -44,7 +43,7 @@ pub fn cmd_convert_font(args: Args) -> Result<()> {
     )?;
 
     // Print summary of what was generated
-    println!("\nFont Generation Summary:");
+    println!("Font Generation Summary:");
     print_glyph_summary(
         &args.input,
         Some(&output_path),
@@ -224,7 +223,7 @@ fn rust_font_atlas(
 
 /// **Danger**: leaking [`FontAtlas<'static>`] for the lifetime of the program
 pub fn {font_basename}_atlas() -> ::embedded_graphics::mono_font::MonoFont<'static> {{
-    let atlas = FontAtlas::from_partitioned_ranges({min_range_length}, {mapping_string:?})
+    let atlas = FontAtlas::from_mapping_str({min_range_length}, {mapping_string:?})
         .leak();
 
     ::embedded_graphics::mono_font::MonoFont {{

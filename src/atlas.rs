@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::ops::RangeInclusive;
-use embedded_graphics::mono_font::mapping::GlyphMapping;
+use embedded_graphics::mono_font::mapping::{GlyphMapping, StrGlyphMapping};
 
 /// ASCII space character offset for fast ASCII lookups
 const ASCII_OFFSET: usize = *NamedUnicodeBlock::Ascii.range().start() as usize;
@@ -84,12 +84,15 @@ impl FontAtlas {
     /// while smaller ranges are stored as individual symbols in a `BTreeMap`.
     ///
     /// Panics when debug assertions are enabled if ranges are not sorted.
-    pub fn from_partitioned_ranges(
+    pub fn from_mapping_str(
         min_range_threshold: usize,
-        ranges: impl Iterator<Item = (usize, RangeInclusive<char>)>,
+        mapping: &str,
     ) -> Self {
-        let (blocks, singles): (Vec<_>, Vec<_>) =
-            ranges.partition(|(_, range)| range_len(range) >= min_range_threshold);
+        // the atlas uses the same mapping as StrGlyphMapping,
+        // so we can reuse its parsing logic
+        let mapping = StrGlyphMapping::new(mapping, 0);
+
+        let (blocks, singles): (Vec<_>, Vec<_>) = mapping.ranges().partition(|(_, range)| range_len(range) >= min_range_threshold);
 
         let blocks: Vec<_> = blocks.into_iter().map(UnicodeBlock::from).collect();
 

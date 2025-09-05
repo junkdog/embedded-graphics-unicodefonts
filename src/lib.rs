@@ -73,8 +73,12 @@ mod mono_6x10;
 pub use mono_6x10::MONO_6X10;
 // mod mono_6x10_atlas;
 // pub use mono_6x10_atlas::*;
+mod mono_6x10_optimized_atlas;
+pub use mono_6x10_optimized_atlas::*;
 mod mono_6x12;
 pub use mono_6x12::MONO_6X12;
+mod mono_6x12_optimized_atlas;
+pub use mono_6x12_optimized_atlas::*;
 // mod mono_6x12_atlas;
 // pub use mono_6x12_atlas::*;
 mod mono_5x8;
@@ -97,3 +101,5 @@ pub use mono_8x13::MONO_8X13;
 // pub use mono_8x13_bold_atlas::*;
 
 pub mod atlas;
+mod mono_6x12_optimized;
+mod mono_6x10_optimized;

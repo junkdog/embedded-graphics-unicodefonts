@@ -11,10 +11,10 @@ cd "$SCRIPT_DIR"
 # Path to the bdf-atlas-converter binary
 ATLAS_CONVERTER="../../target/release/bdf-atlas-converter"
 
-# <describe>
+# Fonts to build with optimized glyph sets (subset of glyphs for smaller size)
 BUILD_OPTIMIZED_FONTS=(
     "misc-misc/6x10.bdf"
-    "misc-misc/7x12.bdf"
+    "misc-misc/6x12.bdf"
 )
 
 # Check if binary exists, if not build it
@@ -36,15 +36,16 @@ mkdir -p ../../src/raw
 
 ### Build atlas-compatible fonts ###
 # build fonts with a subset of glyphs, suitable for most ratatui use cases
-if [ "$BUILD_OPTIMIZED_FONTS" -ne 0 ]; then
-    for font in misc-misc/*.bdf; do
-        if [[ ! "$font" =~ (ja|ko|nil2|k14) ]]; then
-            $ATLAS_CONVERTER "$font" \
-                --save-png \
-                --suffix="_optimized" \
-                --gap-threshold=2 \
-                --output ../../src
-        fi
+if [ ${#BUILD_OPTIMIZED_FONTS[@]} -gt 0 ]; then
+    for font in "${BUILD_OPTIMIZED_FONTS[@]}"; do
+        echo "Processing optimized font: $font"
+        $ATLAS_CONVERTER "$font" \
+            --save-png \
+            --suffix="_optimized" \
+            --gap-threshold=2 \
+            --output ../../src
+
+            echo
     done
 fi
 
@@ -54,9 +55,11 @@ for font in misc-misc/*.bdf; do
         echo "Processing font: $font"
         $ATLAS_CONVERTER "$font" \
             --save-png \
-            --range 0x0020..0xffff \
+            --range 0x0000..0xffff \
             --gap-threshold=0 \
             --output ../../src
+
+        echo
     fi
 done
 
