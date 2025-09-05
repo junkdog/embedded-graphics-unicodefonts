@@ -4,20 +4,30 @@ A command-line tool that converts BDF fonts into Rust font modules with
 extended Unicode character support.
 
 ```
-bdf-atlas-converter [OPTIONS] <INPUT>
+Convert BDF fonts using to atlas-backed embedded fonts
+
+Usage: bdf-atlas-converter [OPTIONS] <INPUT>
 
 Arguments:
   <INPUT>  Input BDF file
 
 Options:
-  -i, --info                           Display information about the BDF file without converting
-  -o, --output <OUTPUT>               Output file
-  -r, --range <RANGES>                Additional Unicode ranges in hex format (e.g., 0x20..0x7f)
-      --gap-threshold <GAP_THRESHOLD> Maximum gap size to bridge when creating ranges [default: 1]
-      --min-range-length <MIN_RANGE_LENGTH> Minimum consecutive characters needed to form a range [default: 8]
-      --save-png                      Save a PNG image of the generated font atlas
-      --suffix <SUFFIX>               Optional suffix to append to font names (e.g. "_optimized")
-  -h, --help                          Print help
+  -i, --info
+          Display information about the BDF file without converting
+  -o, --output <OUTPUT>
+          Output file
+  -r, --range <RANGES>
+          Additional Unicode ranges in hex format (e.g., 0x20..0x7f)
+      --gap-threshold <GAP_THRESHOLD>
+          Maximum gap size to bridge when creating ranges (default: 1) [default: 1]
+      --min-range-length <MIN_RANGE_LENGTH>
+          Minimum consecutive characters needed to form a range (default: 8) [default: 8]
+      --save-png
+          Save a PNG image of the generated font atlas
+      --suffix <SUFFIX>
+          Optional suffix to append to font names (e.g. "_optimized")
+  -h, --help
+          Print help
 ```
 
 ## Overview
