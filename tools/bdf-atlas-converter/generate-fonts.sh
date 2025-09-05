@@ -49,16 +49,21 @@ if [ ${#BUILD_OPTIMIZED_FONTS[@]} -gt 0 ]; then
     done
 fi
 
-# rebuild existing fonts for faster lookups. retains all glyphs.
+# rebuild existing fonts for, stripping ascii control chars, retains all
+# glyphs other glyphs.
+#
+# gap-threshold=0 can maybe be tweaked, but any perf benefit is
+# marginal at best; if you need better performance, it's better to
+# run the tool manually to build an optimized font with a subset of
+# glyphs using  the `--range` option (can be specified multiple times).
 for font in misc-misc/*.bdf; do
-    if [[ ! "$font" =~ (k14|nil) ]]; then # has almost no glyphs
+    if [[ ! "$font" =~ (k14|nil) ]]; then
         echo "Processing font: $font"
         $ATLAS_CONVERTER "$font" \
             --save-png \
             --range 0x0000..0xffff \
             --gap-threshold=0 \
             --output ../../src
-
         echo
     fi
 done

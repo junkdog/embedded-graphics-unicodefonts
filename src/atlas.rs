@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 use core::ops::RangeInclusive;
 use embedded_graphics::mono_font::mapping::{GlyphMapping, StrGlyphMapping};
 
@@ -60,11 +61,21 @@ impl FontAtlas {
             return Some(symbol as usize - ASCII_OFFSET);
         }
 
-        self.blocks
-            .iter()
-            .skip(1) // skip ASCII block, handled above
-            .find_map(|b| b.try_index(symbol))
-            .or_else(|| self.other_symbols.get(&symbol).copied())
+        // Binary search through non-ASCII blocks for better performance
+        if self.blocks.len() > 1 {
+            match self.blocks[1..].binary_search_by(|block| compare_symbol_to_block(symbol, block)) {
+                Ok(index) => {
+                    // Found the block containing the symbol
+                    if let Some(glyph_index) = self.blocks[index + 1].try_index(symbol) {
+                        return Some(glyph_index);
+                    }
+                }
+                Err(_) => {} // Not found in any block
+            }
+        }
+
+        // Fallback to individual symbols
+        self.other_symbols.get(&symbol).copied()
     }
 
     /// Leaks the font atlas to obtain a 'static reference.
@@ -200,5 +211,16 @@ fn range_len(range: &RangeInclusive<char>) -> usize {
 impl From<(usize, RangeInclusive<char>)> for UnicodeBlock {
     fn from((base_offset, range): (usize, RangeInclusive<char>)) -> Self {
         Self { base_offset, range }
+    }
+}
+
+/// Helper function for binary search comparison of symbol against Unicode block
+fn compare_symbol_to_block(symbol: char, block: &UnicodeBlock) -> Ordering {
+    if symbol < *block.range.start() {
+        Ordering::Greater
+    } else if symbol > *block.range.end() {
+        Ordering::Less
+    } else {
+        Ordering::Equal
     }
 }

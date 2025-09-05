@@ -104,7 +104,8 @@ cargo run -- input.bdf --save-png --output ../../assets
 
 ## FontAtlas integration with embedded-graphics-unicodefonts
 
-The tool generates code that integrates with the main crate's `FontAtlas`:
+The tool generates code that that the creates a `MonoFont` using the `FontAtlas`
+type for glyph mapping. Example generated code:
 
 ```rust
 // Generated atlas module example
