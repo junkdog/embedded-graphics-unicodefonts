@@ -1,6 +1,8 @@
 use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::ops;
+use core::ops::RangeInclusive;
 use embedded_graphics::mono_font::mapping::{GlyphMapping, StrGlyphMapping};
 
 /// ASCII space character offset for fast ASCII lookups
@@ -25,7 +27,7 @@ impl GlyphMapping for FontAtlas {
 /// - Memory usage is optimized for embedded systems
 pub struct FontAtlas {
     blocks: Vec<UnicodeBlock>,
-    other_symbols: Vec<char>, // sorted
+    other_symbols: BTreeMap<char, usize>,
 }
 
 
@@ -39,13 +41,14 @@ impl FontAtlas {
     ///
     /// Unicode blocks are yielded first, followed by individual symbols.
     pub fn iter(&self) -> impl Iterator<Item=char> + '_ {
-        self.blocks.iter().flat_map(|b| b.iter()).chain(self.other_symbols.iter().copied())
+        self.blocks.iter()
+            .flat_map(|b| b.iter()).chain(self.other_symbols.keys().copied())
     }
 
     /// Returns `true` if the atlas contains the given character.
     pub fn contains(&self, symbol: char) -> bool {
         self.blocks.iter().any(|b| b.contains(symbol))
-            || self.other_symbols.binary_search(&symbol).is_ok()
+            || self.other_symbols.contains_key(&symbol)
     }
 
     /// Finds the glyph index for a character.
@@ -85,12 +88,22 @@ impl FontAtlas {
     /// - If the first range doesn't start with ASCII space (U+0020)
     /// - If ranges are not sorted in ascending order
     /// - If individual symbols are not sorted in ascending order
-    fn from_ranges(ranges: impl Iterator<Item=ops::RangeInclusive<char>>) -> Self {
-        let (blocks, singles): (Vec<_>, Vec<_>) = ranges
-            .partition(|range| range.start() != range.end());
+    fn from_ranges(ranges: impl Iterator<Item=(usize, ops::RangeInclusive<char>)>) -> Self {
+        let indexed_ranges: Vec<_> = ranges.collect();
+
+        let blocks: Vec<_> = indexed_ranges.iter()
+            .filter(|(_, range)| range_len(range) > 1)
+            .cloned()
+            .map(UnicodeBlock::from)
+            .collect();
+
+        let singles = indexed_ranges.iter()
+            .filter(|(_, range)| range_len(range) == 1)
+            .flat_map(|(offset, range)| range.clone().into_iter().map(|c| (c, *offset)))
+            .collect::<BTreeMap<_, _>>();
 
         debug_assert!(
-            *blocks[0].start() == '\u{0020}',
+            blocks[0].start() == '\u{0020}',
             "Invalid FontAtlas: must start with ASCII block"
         );
 
@@ -99,14 +112,9 @@ impl FontAtlas {
             "Invalid FontAtlas: ranges must be sorted"
         );
 
-        debug_assert!(
-            singles.windows(2).all(|w| w[0].start() < w[1].start()),
-            "Invalid FontAtlas: individual symbols must be sorted"
-        );
-
         Self {
-            blocks: into_unicode_blocks(blocks.into_iter()),
-            other_symbols: singles.into_iter().map(|r| *r.start()).collect(),
+            blocks,
+            other_symbols: singles,
         }
     }
 
@@ -118,10 +126,7 @@ impl FontAtlas {
     }
 
     fn index_of_other_symbol(&self, symbol: char) -> Option<usize> {
-        self.other_symbols
-            .binary_search(&symbol)
-            .map(|idx| self.glyph_count_in_blocks() + idx)
-            .ok()
+        self.other_symbols.get(&symbol).copied()
     }
 }
 
@@ -132,7 +137,7 @@ impl From<&str> for FontAtlas {
     ///
     /// Uses [`StrGlyphMapping`] to extract character ranges from the input string.
     fn from(glyph_set: &str) -> Self {
-        Self::from_ranges(StrGlyphMapping::new(glyph_set, 0).ranges().map(|(_, range)| range))
+        Self::from_ranges(StrGlyphMapping::new(glyph_set, 0).ranges())
     }
 }
 
@@ -167,6 +172,11 @@ impl UnicodeBlock {
     fn iter(&self) -> impl Iterator<Item=char> + '_ {
         self.range.clone()
     }
+
+    fn start(&self) -> char {
+        *self.range.start()
+    }
+
 }
 
 /// Named Unicode blocks with predefined ranges for font generation
@@ -189,7 +199,7 @@ impl NamedUnicodeBlock {
     /// Returns the Unicode range for this block
     pub const fn range(&self) -> ops::RangeInclusive<char> {
         match self {
-            Self::Ascii            => '\u{0020}'..='\u{007F}',
+            Self::Ascii            => '\u{0020}'..='\u{007E}',
             Self::Latin1           => '\u{00A0}'..='\u{00FF}',
             Self::BoxDrawing       => '\u{2500}'..='\u{257F}',
             Self::BlockElements    => '\u{2580}'..='\u{259F}',
@@ -205,23 +215,16 @@ impl NamedUnicodeBlock {
 }
 
 
-fn into_unicode_blocks(blocks: impl Iterator<Item=ops::RangeInclusive<char>>) -> Vec<UnicodeBlock> {
-    let mut base_offset = 0u32;
-    let mut result = Vec::with_capacity(blocks.size_hint().0);
-
-    for block in blocks {
-        let block_len = range_len(&block);
-        result.push(UnicodeBlock {
-            base_offset,
-            range: block,
-        });
-
-        base_offset += block_len
-    }
-
-    result
-}
 
 fn range_len(range: &ops::RangeInclusive<char>) -> u32 {
     *range.end() as u32 - *range.start() as u32 + 1
+}
+
+impl From<(usize, ops::RangeInclusive<char>)> for UnicodeBlock {
+    fn from((base_offset, range): (usize, RangeInclusive<char>)) -> Self {
+        Self {
+            base_offset: base_offset as u32,
+            range,
+        }
+    }
 }

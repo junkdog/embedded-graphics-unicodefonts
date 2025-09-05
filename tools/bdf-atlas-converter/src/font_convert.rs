@@ -1,6 +1,6 @@
 use crate::args::Args;
 use crate::font_info::print_glyph_summary;
-use crate::layout::{into_blocks, layout_glyphs};
+use crate::layout::{layout_glyphs, GlyphLayout};
 use crate::utils::{extract_glyphs_from_font, load_font};
 use bdf_parser::Font;
 use color_eyre::{eyre::eyre, Result};
@@ -30,10 +30,10 @@ pub fn cmd_convert_font(args: Args) -> Result<()> {
     let total_filtered_glyphs = filtered_glyphs.len();
 
     let glyph_layout = layout_glyphs(filtered_glyphs, args.gap_threshold, args.min_range_length);
-    let blocks = into_blocks(&glyph_layout);
+    // let blocks = into_blocks(&glyph_layout);
     let basename = create_font_basename(&args.input, args.suffix.as_deref())?;
 
-    let (font_output, atlas_src) = generate_font_files(&basename, &args.input, blocks)?;
+    let (font_output, atlas_src) = generate_font_files(&basename, &args.input, &glyph_layout)?;
 
     save_font(
         basename,
@@ -108,9 +108,9 @@ fn create_font_basename(input: &Path, suffix: Option<&str>) -> Result<String> {
 fn generate_font_files(
     basename: &str,
     input: &Path,
-    blocks: Vec<RangeInclusive<char>>,
+    blocks: &[GlyphLayout],
 ) -> Result<(MonoFontOutput, String)> {
-    let mapping_string = generate_ranges_string(&blocks);
+    let mapping_string = generate_ranges_string(blocks);
     let font_output = convert_bdf(basename, input, blocks)?;
     let atlas_src = rust_font_atlas(basename, &font_output, &mapping_string)?;
 
@@ -149,13 +149,18 @@ fn save_font(
 fn convert_bdf(
     basename: &str,
     input: &Path,
-    blocks: Vec<RangeInclusive<char>>,
+    blocks: &[GlyphLayout],
 ) -> Result<MonoFontOutput> {
     let name = basename.to_ascii_uppercase();
     let mut converter = FontConverter::with_file(input, &name);
 
     for block in blocks {
-        converter = converter.glyphs(block);
+        let glyphs = match block {
+            GlyphLayout::Range { span, .. } => span.clone(),
+            GlyphLayout::Single(c) => *c..=*c,
+        };
+
+        converter = converter.glyphs(glyphs);
     }
 
     converter
@@ -165,17 +170,18 @@ fn convert_bdf(
         .map_err(|e| eyre!("{}", e))
 }
 
-fn generate_ranges_string(blocks: &[RangeInclusive<char>]) -> String {
+fn generate_ranges_string(blocks: &[GlyphLayout]) -> String {
     let mut result = String::new();
 
     for range in blocks {
-        // blocks are sorted and non-overlapping, with single-letter ranges last
-        if range.start() < range.end() {
-            result.push('\0'); // Range start marker
-            result.push(*range.start()); // Range start character
-            result.push(*range.end()); // Range end character
-        } else {
-            result.push(*range.start());
+        match range {
+            GlyphLayout::Range { span, .. } => {
+                result.push('\0'); // Range start marker
+                result.push(*span.start()); // Range start character
+                result.push(*span.end()); // Range end character
+
+            }
+            GlyphLayout::Single(c) => result.push(*c),
         }
     }
 

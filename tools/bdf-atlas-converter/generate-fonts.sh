@@ -46,11 +46,14 @@ fi
 
 # rebuild existing fonts for faster lookups. retains all glyphs.
 for font in misc-misc/*.bdf; do
-    $ATLAS_CONVERTER "$font" \
-        --save-png \
-        --range 0x0020..0xffff \
-        --gap-threshold=2 \
-        --output ../../src
+    if [[ ! "$font" =~ (k14) ]]; then # has almost no glyphs
+        echo "Processing font: $font"
+        $ATLAS_CONVERTER "$font" \
+            --save-png \
+            --range 0x0020..0xffff \
+            --gap-threshold=0 \
+            --output ../../src
+    fi
 done
 
 # Bulk move all .data files to raw/ directory

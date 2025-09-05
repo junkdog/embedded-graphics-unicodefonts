@@ -34,7 +34,7 @@ pub fn cmd_font_info(args: Args) -> Result<()> {
     let total_glyphs = glyphs.len();
 
     // join glyphs into ranges
-    let glyph_layout: GlyphLayout =
+    let glyph_layout: Vec<GlyphLayout> =
         layout_glyphs(glyphs, args.gap_threshold, args.min_range_length);
 
     println!("Font Information: {}", args.input.display());
@@ -58,42 +58,53 @@ pub fn cmd_font_info(args: Args) -> Result<()> {
     print_glyph_summary(&args.input, None, total_glyphs, &glyph_layout);
     println!();
 
-    if !glyph_layout.ranges.is_empty() {
+    // extract ranges from the glyph layout
+    let ranges: Vec<_> = glyph_layout
+        .iter()
+        .filter_map(|g| match g {
+            GlyphLayout::Range { span, .. } => Some(span),
+            _ => None,
+        })
+        .collect();
+
+    if !ranges.is_empty() {
         let total_range_chars: u32 = glyph_layout
-            .ranges
             .iter()
-            .map(|r| r.end() - r.start() + 1)
+            .filter_map(|g| match g {
+                GlyphLayout::Range { .. } => Some(g.glyph_count()),
+                _ => None,
+            })
             .sum();
         println!("Unicode Ranges ({} chars total):", total_range_chars);
 
         // First range has no gap info
-        if let Some(first_range) = glyph_layout.ranges.first() {
-            let start_char = char::from_u32(*first_range.start()).unwrap_or('�');
-            let end_char = char::from_u32(*first_range.end()).unwrap_or('�');
+        if let Some(first_range) = ranges.first() {
+            let start_char = *first_range.start();
+            let end_char = *first_range.end();
             println!(
                 "  U+{:04X}..U+{:04X} ({} chars) '{}' to '{}'",
-                first_range.start(),
-                first_range.end(),
-                first_range.end() - first_range.start() + 1,
+                start_char as u32,
+                end_char as u32,
+                end_char as u32 - start_char as u32 + 1,
                 start_char,
                 end_char
             );
         }
 
         // Subsequent ranges show gap from previous range
-        for window in glyph_layout.ranges.windows(2) {
+        for window in ranges.windows(2) {
             let prev_range = &window[0];
             let curr_range = &window[1];
-            let gap = curr_range.start() - prev_range.end() - 1;
+            let gap = *curr_range.start() as u32 - *prev_range.end() as u32 - 1;
 
-            let start_char = char::from_u32(*curr_range.start()).unwrap_or('�');
-            let end_char = char::from_u32(*curr_range.end()).unwrap_or('�');
+            let start_char = *curr_range.start();
+            let end_char = *curr_range.end();
 
             println!(
                 "  U+{:04X}..U+{:04X} ({} chars) '{}' to '{}' (gap: {} chars)",
-                curr_range.start(),
-                curr_range.end(),
-                curr_range.end() - curr_range.start() + 1,
+                start_char as u32,
+                end_char as u32,
+                end_char as u32 - start_char as u32 + 1,
                 start_char,
                 end_char,
                 gap
@@ -102,14 +113,22 @@ pub fn cmd_font_info(args: Args) -> Result<()> {
         println!();
     }
 
-    if !glyph_layout.singles.is_empty() {
+    // Extract singles from the glyph layout
+    let singles: Vec<_> = glyph_layout
+        .iter()
+        .filter_map(|g| match g {
+            GlyphLayout::Single(c) => Some(*c),
+            _ => None,
+        })
+        .collect();
+
+    if !singles.is_empty() {
         println!("Individual Characters:");
-        for (i, &code) in glyph_layout.singles.iter().enumerate() {
+        for (i, ch) in singles.iter().enumerate() {
             if i > 0 && i % 8 == 0 {
                 println!();
             }
-            let ch = char::from_u32(code).unwrap_or('�');
-            print!("  U+{:04X}('{}') ", code, ch);
+            print!("  U+{:04X}('{}') ", *ch as u32, ch);
         }
         println!();
     }
@@ -121,23 +140,45 @@ pub fn print_glyph_summary(
     input_path: &std::path::Path,
     output_path: Option<&std::path::Path>,
     total_glyphs: usize,
-    glyph_layout: &GlyphLayout,
+    glyph_layout: &[GlyphLayout],
 ) {
-    let total_range_chars: u32 = glyph_layout
-        .ranges
+    let skipped_chars_count = glyph_layout
         .iter()
-        .map(|r| r.end() - r.start() + 1)
+        .fold(0, |acc, g| match g {
+            GlyphLayout::Range { skipped, .. } => acc + *skipped,
+            _ => acc,
+        });
+
+    let ranges: Vec<_> = glyph_layout
+        .iter()
+        .filter_map(|g| match g {
+            GlyphLayout::Range { span, .. } => Some(span),
+            _ => None,
+        })
+        .collect();
+
+    let singles_count = glyph_layout
+        .iter()
+        .filter(|g| matches!(g, GlyphLayout::Single(_)))
+        .count();
+
+    let total_range_chars: u32 = glyph_layout
+        .iter()
+        .filter_map(|g| match g {
+            GlyphLayout::Range { .. } => Some(g.glyph_count()),
+            _ => None,
+        })
         .sum();
 
     println!("Character Coverage:");
     println!("  Total glyphs: {}", total_glyphs);
     println!(
         "  Ranges: {} ({} chars total)",
-        glyph_layout.ranges.len(),
+        ranges.len(),
         total_range_chars
     );
-    println!("  Gaps (wasted): {}", glyph_layout.skipped_chars_count);
-    println!("  Single characters: {}", glyph_layout.singles.len());
+    println!("  Gaps (wasted): {}", skipped_chars_count);
+    println!("  Single characters: {}", singles_count);
 
     if let Some(output) = output_path {
         println!("  Input: {}", input_path.display());
