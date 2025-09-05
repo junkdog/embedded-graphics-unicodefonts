@@ -63,14 +63,13 @@ impl FontAtlas {
 
         // Binary search through non-ASCII blocks for better performance
         if self.blocks.len() > 1 {
-            match self.blocks[1..].binary_search_by(|block| compare_symbol_to_block(symbol, block)) {
-                Ok(index) => {
-                    // Found the block containing the symbol
-                    if let Some(glyph_index) = self.blocks[index + 1].try_index(symbol) {
-                        return Some(glyph_index);
-                    }
+            if let Ok(index) =
+                self.blocks[1..].binary_search_by(|block| compare_symbol_to_block(symbol, block))
+            {
+                // Found the block containing the symbol
+                if let Some(glyph_index) = self.blocks[index + 1].try_index(symbol) {
+                    return Some(glyph_index);
                 }
-                Err(_) => {} // Not found in any block
             }
         }
 
@@ -95,15 +94,14 @@ impl FontAtlas {
     /// while smaller ranges are stored as individual symbols in a `BTreeMap`.
     ///
     /// Panics when debug assertions are enabled if ranges are not sorted.
-    pub fn from_mapping_str(
-        min_range_threshold: usize,
-        mapping: &str,
-    ) -> Self {
+    pub fn from_mapping_str(min_range_threshold: usize, mapping: &str) -> Self {
         // the atlas uses the same mapping as StrGlyphMapping,
         // so we can reuse its parsing logic
         let mapping = StrGlyphMapping::new(mapping, 0);
 
-        let (blocks, singles): (Vec<_>, Vec<_>) = mapping.ranges().partition(|(_, range)| range_len(range) >= min_range_threshold);
+        let (blocks, singles): (Vec<_>, Vec<_>) = mapping
+            .ranges()
+            .partition(|(_, range)| range_len(range) >= min_range_threshold);
 
         let blocks: Vec<_> = blocks.into_iter().map(UnicodeBlock::from).collect();
 

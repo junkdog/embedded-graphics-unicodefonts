@@ -103,8 +103,6 @@ mod mono_8x13_bold_atlas;
 pub use mono_8x13_bold_atlas::*;
 
 mod mono_6x12_optimized;
-pub use mono_6x12_optimized_atlas::*;
 pub use mono_6x12_optimized::MONO_6X12_OPTIMIZED;
 mod mono_6x10_optimized;
 pub use mono_6x10_optimized::MONO_6X10_OPTIMIZED;
-pub use mono_6x10_optimized_atlas::*;
