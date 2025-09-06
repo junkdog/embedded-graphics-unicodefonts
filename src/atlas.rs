@@ -121,7 +121,7 @@ impl FontAtlas {
         }
     }
 
-    pub fn glyph_count_in_blocks(&self) -> usize {
+    fn glyph_count_in_blocks(&self) -> usize {
         self.blocks
             .last()
             .map(|b| b.len() + b.base_offset)

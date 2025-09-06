@@ -169,7 +169,6 @@ fn convert_bdf(basename: &str, input: &Path, blocks: &[GlyphLayout]) -> Result<M
     }
 
     converter
-        .replacement_character(' ')
         .missing_glyph_substitute(' ')
         .convert_mono_font()
         .map_err(|e| eyre!("{}", e))

@@ -5,7 +5,7 @@ pub const MONO_6X12_OPTIMIZED: ::embedded_graphics::mono_font::MonoFont = ::embe
     ),
     glyph_mapping: &::embedded_graphics::mono_font::mapping::StrGlyphMapping::new(
         "\0 ~\0\u{a0}ÿ\0₠₵\0─▟\0☀⚜\0⚠⚼\0⛀⛃\0⠀⣿\0⬀⭌",
-        0usize,
+        31usize,
     ),
     character_size: ::embedded_graphics::geometry::Size::new(6u32, 12u32),
     character_spacing: 0u32,
